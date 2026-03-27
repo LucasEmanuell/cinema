@@ -31,6 +31,26 @@ cinema/
 python cinema.py <comando> [opções]
 ```
 
+### `cinemas` — Cinemas de uma cidade
+
+```bash
+python cinema.py cinemas
+python cinema.py cinemas --cidade "sao paulo"
+python cinema.py cinemas --teatro "cinepolis"
+```
+
+Lista todos os cinemas da cidade com rede, bairro, número de salas e capacidade total.
+Com `--teatro`, filtra e mostra o detalhe de cada sala individualmente.
+
+**Opções:**
+
+| Flag | O que faz |
+|---|---|
+| `--cidade CIDADE` | Cidade alvo (padrão: Fortaleza). Parcial, sem acento. |
+| `--teatro NOME` | Filtra por nome e exibe as salas do cinema. |
+
+---
+
 ### `filmes` — O que está em cartaz
 
 ```bash
@@ -162,6 +182,8 @@ A API compartilha o mesmo cache do CLI (`~/.cache/cinema-fortaleza/`), então re
 | `GET` | `/tickets/{session_id}/{section_id}` | Preços com taxa de serviço separada |
 | `GET` | `/assentos/{session_id}/{section_id}` | Mapa de assentos completo |
 
+> Endpoint `GET /cinemas?cidade=` não existe ainda na API web — por enquanto só no CLI.
+
 O parâmetro `filme` e `cidade` aceitam texto parcial sem acento, igual ao CLI. Cidade padrão: Fortaleza.
 
 **Exemplos:**
@@ -196,11 +218,19 @@ Respostas salvas em `~/.cache/cinema-fortaleza/` como JSON com TTL. Compartilhad
 |---|---|---|
 | Cidades | 24 horas | Raramente muda |
 | Lista de filmes | 1 hora | Muda quando estreia filme novo |
+| Lista de cinemas | 1 hora | Estável |
 | Sessões / programação | 15 min | Estável após ser publicada |
 | Preços (tickets) | 1 hora | Raramente muda durante o dia |
 | Mapa de assentos | 5 min | Muda conforme ingressos são vendidos |
 
 ### Fluxo de dados
+
+**`cinemas`**
+```
+GET /v0/theaters/city/{id}?partnership=ingresso.com
+  → ordena por nome
+  → exibe rede, bairro, salas e capacidade
+```
 
 **`filmes` / `GET /filmes`**
 ```
@@ -300,7 +330,6 @@ Para comprar, use o site ou app da ingresso.com ou a bilheteria do cinema.
 
 ## Melhorias futuras
 
-- [ ] Comando `cinemas` para listar cinemas de uma cidade com endereço e salas
 - [ ] Flag `--formato` para filtrar sessões por tipo (IMAX, VIP, etc.)
 - [ ] Flag `--menor-preco` para ordenar por preço
 - [ ] Tracking de ocupação para sessões consultadas (SQLite, ver `DATA_STRATEGY.md`)

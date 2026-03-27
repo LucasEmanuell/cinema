@@ -20,11 +20,12 @@ CHECKOUT_API = "https://api.ingresso.com/v1"
 CACHE_DIR    = Path.home() / ".cache" / "cinema-fortaleza"
 
 TTL = {
-    "movies":   3600,   # 1h  — catalog changes slowly
-    "sessions":  900,   # 15m — schedule is stable once published
-    "tickets":  3600,   # 1h  — prices rarely change intraday
-    "seats":     300,   # 5m  — occupancy changes in real time
-    "cities":  86400,   # 24h — cities almost never change
+    "movies":    3600,  # 1h  — catalog changes slowly
+    "sessions":   900,  # 15m — schedule is stable once published
+    "tickets":   3600,  # 1h  — prices rarely change intraday
+    "seats":      300,  # 5m  — occupancy changes in real time
+    "cities":   86400,  # 24h — cities almost never change
+    "theaters":  3600,  # 1h  — theater list is stable
 }
 
 
@@ -48,11 +49,12 @@ class APIError(Exception):
 # Required top-level fields per response type.
 # For list responses the check is applied to the first item in the list.
 _SCHEMAS: dict[str, set[str]] = {
-    "movies":   {"id", "title", "urlKey", "isPlaying"},
-    "sessions": {"date", "theaters"},
-    "tickets":  {"default"},
-    "seats":    {"totalSeats", "lines", "labels", "stage"},
-    "states":   {"name", "uf", "cities"},
+    "movies":    {"id", "title", "urlKey", "isPlaying"},
+    "sessions":  {"date", "theaters"},
+    "tickets":   {"default"},
+    "seats":     {"totalSeats", "lines", "labels", "stage"},
+    "states":    {"name", "uf", "cities"},
+    "theaters":  {"id", "name", "rooms"},
 }
 
 
@@ -198,6 +200,17 @@ def api_seats(session_id: str, section_id: str):
         ttl=TTL["seats"],
         schema="seats",
     )
+
+def api_theaters(city_id: int = CITY_ID):
+    """All theaters for a city, sorted by name."""
+    data = fetch(
+        f"{CONTENT_API}/theaters/city/{city_id}",
+        params={"partnership": PARTNERSHIP},
+        cache_key=f"theaters_{city_id}",
+        ttl=TTL["theaters"],
+        schema="theaters",
+    ) or []
+    return sorted(data, key=lambda t: t.get("name", ""))
 
 def api_states():
     """All Brazilian states and their cities."""

@@ -20,7 +20,8 @@ from rich import box
 from core import (
     APIError,
     api_movies, api_session_dates, api_sessions, api_tickets, api_seats,
-    api_states, find_movie, normalize, resolve_date, resolve_city, parse_tickets,
+    api_theaters, api_states, find_movie, normalize, resolve_date, resolve_city,
+    parse_tickets,
 )
 
 console = Console()
@@ -424,6 +425,92 @@ def cmd_sessoes(args):
     console.print()
 
 
+def cmd_cinemas(args):
+    city_id, city_name = resolve_city(args.cidade)
+    if city_id is None:
+        console.print(f"[red]Cidade não encontrada:[/red] {args.cidade}")
+        console.print("[dim]Tente parte do nome, ex: 'recife', 'sao paulo', 'belo horizonte'[/dim]")
+        return
+
+    with console.status(f"[dim]Buscando cinemas em {city_name}...[/dim]"):
+        theaters = api_theaters(city_id)
+
+    if not theaters:
+        console.print(f"[red]Nenhum cinema encontrado em {city_name}.[/red]")
+        return
+
+    teatro_q = normalize(args.teatro) if args.teatro else None
+    if teatro_q:
+        theaters = [t for t in theaters if teatro_q in normalize(t["name"])]
+        if not theaters:
+            console.print(f"\n[yellow]Nenhum cinema encontrado com:[/yellow] {args.teatro}\n")
+            return
+
+    # ── Detail mode (one or few theaters after --teatro filter) ───────────────
+    if args.teatro:
+        for t in theaters:
+            rooms    = t.get("rooms", [])
+            capacity = sum(r.get("capacity", 0) for r in rooms)
+            corp     = t.get("corporation", "")
+            neigh    = t.get("neighborhood", "")
+
+            console.print()
+            console.rule(
+                f"[bold]{t['name']}[/bold]"
+                + (f"  [dim]{corp}[/dim]" if corp and corp != t["name"] else ""),
+                align="left",
+            )
+            if neigh:
+                console.print(f"  [dim]{neigh}  ·  {city_name}[/dim]")
+            console.print(f"  {len(rooms)} salas  ·  {capacity} assentos no total")
+            console.print()
+
+            for r in rooms:
+                cap_str = f"{r['capacity']} lugares" if r.get("capacity") else ""
+                console.print(f"    [bold]{r.get('fullName') or r['name']}[/bold]"
+                               + (f"  [dim]{cap_str}[/dim]" if cap_str else ""))
+            console.print()
+        return
+
+    # ── List mode (all theaters in city) ──────────────────────────────────────
+    table = Table(
+        title=f"Cinemas — {city_name}",
+        box=box.ROUNDED,
+        border_style="bright_black",
+        header_style="bold",
+        show_lines=False,
+    )
+    table.add_column("#",        style="dim", width=3, justify="right")
+    table.add_column("Cinema",   min_width=28)
+    table.add_column("Rede",     width=16, style="dim")
+    table.add_column("Bairro",   min_width=14, style="dim")
+    table.add_column("Salas",    width=6, justify="right")
+    table.add_column("Lugares",  width=8, justify="right")
+
+    for i, t in enumerate(theaters, 1):
+        rooms    = t.get("rooms", [])
+        capacity = sum(r.get("capacity", 0) for r in rooms)
+        corp     = t.get("corporation", "")
+        # Don't repeat corp when it's basically the same as the theater name
+        corp_str = corp if corp and normalize(corp) not in normalize(t["name"]) else ""
+        table.add_row(
+            str(i),
+            t["name"],
+            corp_str,
+            t.get("neighborhood", "—"),
+            str(len(rooms)),
+            str(capacity) if capacity else "—",
+        )
+
+    console.print()
+    console.print(table)
+    console.print()
+    console.print(
+        "[dim]  python cinema.py cinemas --teatro \"nome\"  para ver as salas de um cinema[/dim]"
+    )
+    console.print()
+
+
 def cmd_assentos(args):
     with console.status("[dim]Buscando mapa de assentos...[/dim]"):
         data = api_seats(args.session_id, args.section_id)
@@ -443,6 +530,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 exemplos:
+  python cinema.py cinemas
+  python cinema.py cinemas --cidade "sao paulo"
+  python cinema.py cinemas --teatro "cinepolis"
   python cinema.py filmes
   python cinema.py filmes --cidade "recife"
   python cinema.py sessoes "super mario"
@@ -455,6 +545,12 @@ exemplos:
         """,
     )
     sub = parser.add_subparsers(dest="cmd", metavar="comando")
+
+    pc = sub.add_parser("cinemas", help="Lista cinemas de uma cidade")
+    pc.add_argument("--cidade",  metavar="CIDADE",
+                    help="Cidade (padrão: Fortaleza). Parcial, sem acento, ex: 'recife', 'sao paulo'")
+    pc.add_argument("--teatro",  metavar="NOME",
+                    help="Filtra por nome e mostra detalhes das salas")
 
     pf = sub.add_parser("filmes", help="Lista filmes em cartaz")
     pf.add_argument("--cidade", metavar="CIDADE",
@@ -490,7 +586,9 @@ exemplos:
     args = parser.parse_args()
 
     try:
-        if args.cmd == "filmes":
+        if args.cmd == "cinemas":
+            cmd_cinemas(args)
+        elif args.cmd == "filmes":
             cmd_filmes(args)
         elif args.cmd == "sessoes":
             cmd_sessoes(args)
