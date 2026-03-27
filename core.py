@@ -8,6 +8,7 @@ import json
 import time
 import unicodedata
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -49,12 +50,13 @@ class APIError(Exception):
 # Required top-level fields per response type.
 # For list responses the check is applied to the first item in the list.
 _SCHEMAS: dict[str, set[str]] = {
-    "movies":    {"id", "title", "urlKey", "isPlaying"},
-    "sessions":  {"date", "theaters"},
-    "tickets":   {"default"},
-    "seats":     {"totalSeats", "lines", "labels", "stage"},
-    "states":    {"name", "uf", "cities"},
-    "theaters":  {"id", "name", "rooms"},
+    "movies":          {"id", "title", "urlKey", "isPlaying"},
+    "sessions":        {"date", "theaters"},
+    "tickets":         {"default"},
+    "seats":           {"totalSeats", "lines", "labels", "stage"},
+    "states":          {"name", "uf", "cities"},
+    "theaters":        {"id", "name", "rooms"},
+    "theater_sessions": {"date", "movies"},
 }
 
 
@@ -165,7 +167,8 @@ def api_movies(city_id: int = CITY_ID):
         return []
     return sorted(
         [m for m in data if m.get("isPlaying")],
-        key=lambda m: -m.get("countIsPlaying", 0),
+        # pre-sale movies (not yet in theaters) float to the bottom
+        key=lambda m: (bool(m.get("inPreSale")), -m.get("countIsPlaying", 0)),
     )
 
 def api_session_dates(movie_id: str, city_id: int = CITY_ID):
@@ -211,6 +214,78 @@ def api_theaters(city_id: int = CITY_ID):
         schema="theaters",
     ) or []
     return sorted(data, key=lambda t: t.get("name", ""))
+
+def api_sessions_by_theater(theater_id: str, date_str: str, city_id: int = CITY_ID):
+    """Sessions at a specific theater on a given date, grouped by movie."""
+    data = fetch(
+        f"{CONTENT_API}/sessions/city/{city_id}/theater/{theater_id}/partnership/{PARTNERSHIP}/groupBy/sessionType",
+        params={"date": date_str},
+        cache_key=f"theater_sessions_{theater_id}_{city_id}_{date_str}",
+        ttl=TTL["sessions"],
+        schema="theater_sessions",
+    )
+    return data[0] if data else None
+
+
+def api_movie_ids_in_city(city_id: int) -> set[str]:
+    """IDs of movies with sessions in this city today or tomorrow.
+
+    Queries all theaters in the city (capped at 30, sorted by room count) for
+    today and tomorrow in parallel. Result cached for 15 minutes.
+    """
+    today     = date.today().isoformat()
+    tomorrow  = (date.today() + timedelta(days=1)).isoformat()
+    cache_key = f"movie_ids_city_{city_id}_{today}"
+
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return set(cached)
+
+    theaters = api_theaters(city_id)
+    # Largest theaters first; cap at 30 so big cities (SP ~441) stay fast
+    theaters = sorted(theaters, key=lambda t: -len(t.get("rooms", [])))[:30]
+
+    def _fetch(theater_id, date_str):
+        day = api_sessions_by_theater(theater_id, date_str, city_id)
+        return {str(m["id"]) for m in (day or {}).get("movies", [])}
+
+    movie_ids: set[str] = set()
+    calls = [(t["id"], d) for t in theaters for d in (today, tomorrow)]
+    with ThreadPoolExecutor(max_workers=10) as pool:
+        for ids in pool.map(lambda args: _fetch(*args), calls):
+            movie_ids |= ids
+
+    cache_set(cache_key, list(movie_ids), TTL["sessions"])
+    return movie_ids
+
+
+def api_movies_in_city(city_id: int = CITY_ID) -> list:
+    """Movies actually showing in this city now or in the near future.
+
+    Filters the national isPlaying catalog to movies with real sessions here:
+    - Regular movies: must appear in theater sessions (today or tomorrow).
+    - Pre-sale movies: checked via /dates — included if they have upcoming sessions.
+    """
+    movies    = api_movies(city_id)
+    local_ids = api_movie_ids_in_city(city_id)
+
+    playing  = [m for m in movies if str(m["id"]) in local_ids]
+    presale  = [m for m in movies if m.get("inPreSale") and str(m["id"]) not in local_ids]
+
+    if presale:
+        def _has_dates(m):
+            return m if api_session_dates(m["id"], city_id) else None
+
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            for result in pool.map(_has_dates, presale):
+                if result:
+                    playing.append(result)
+
+    # Restore original sort order (inPreSale to bottom, then countIsPlaying)
+    order = {str(m["id"]): i for i, m in enumerate(movies)}
+    playing.sort(key=lambda m: order.get(str(m["id"]), 9999))
+    return playing
+
 
 def api_states():
     """All Brazilian states and their cities."""

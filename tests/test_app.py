@@ -77,14 +77,14 @@ class TestGetCidades:
 class TestGetFilmes:
     def test_default_city_returns_movies(self, movies):
         with patch("app.resolve_city", return_value=(36, "Fortaleza")), \
-             patch("app.api_movies", return_value=movies):
+             patch("app.api_movies_in_city", return_value=movies):
             r = client.get("/filmes")
         assert r.status_code == 200
         assert len(r.json()) == 3
 
     def test_custom_city_param(self, movies):
         with patch("app.resolve_city", return_value=(2, "Recife")), \
-             patch("app.api_movies", return_value=movies):
+             patch("app.api_movies_in_city", return_value=movies):
             r = client.get("/filmes?cidade=recife")
         assert r.status_code == 200
 
@@ -95,7 +95,7 @@ class TestGetFilmes:
 
     def test_response_shape(self, movies):
         with patch("app.resolve_city", return_value=(36, "Fortaleza")), \
-             patch("app.api_movies", return_value=movies):
+             patch("app.api_movies_in_city", return_value=movies):
             r = client.get("/filmes")
         item = r.json()[0]
         for field in ("id", "title", "urlKey", "contentRating", "duration", "countPlaying"):
@@ -104,7 +104,7 @@ class TestGetFilmes:
     def test_api_error_returns_503(self):
         from core import APIError
         with patch("app.resolve_city", return_value=(36, "Fortaleza")), \
-             patch("app.api_movies", side_effect=APIError("network")):
+             patch("app.api_movies_in_city", side_effect=APIError("network")):
             r = client.get("/filmes")
         assert r.status_code == 503
 

@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>cinema br</title>
+  <style>
+    :root {
+      --bg:       #0d0d12;
+      --surface:  #13131c;
+      --surface2: #1a1a26;
+      --border:   #26263a;
+      --primary:  #8b7cf8;
+      --primary2: #6b5cd8;
+      --text:     #e0e0f4;
+      --muted:    #64648c;
+      --green:    #4ade80;
+      --yellow:   #fbbf24;
+      --red:      #f87171;
+      --radius:   10px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    /* ── Header ─────────────────────────────────────────────────── */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 13px 24px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+    }
+
+    .brand {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.4px;
+      white-space: nowrap;
+    }
+    .brand em { color: var(--primary); font-style: normal; }
+
+    .city-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+    }
+
+    .city-bar label {
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    /* ── Selects ─────────────────────────────────────────────────── */
+    select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 7px 28px 7px 10px;
+      border-radius: 8px;
+      font-size: 14px;
+      outline: none;
+      cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%2364648c' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 9px center;
+      transition: border-color 0.15s;
+    }
+    select:focus         { border-color: var(--primary); }
+    select:disabled      { opacity: 0.4; cursor: default; }
+    select option        { background: var(--surface2); color: var(--text); }
+
+    .select-state { width: 72px; }
+    .select-city  { width: 170px; }
+
+    /* ── Buttons ─────────────────────────────────────────────────── */
+    .btn {
+      padding: 7px 16px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: background 0.15s, color 0.15s;
+      white-space: nowrap;
+      line-height: 1.5;
+    }
+    .btn-ghost {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { background: var(--surface2); color: var(--text); }
+
+    /* ── Main ────────────────────────────────────────────────────── */
+    main {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 28px 24px;
+    }
+
+    /* ── Loading / error ─────────────────────────────────────────── */
+    .loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 64px 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .spinner {
+      width: 28px; height: 28px;
+      border: 2px solid var(--border);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.65s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .error-box {
+      background: rgba(248,113,113,.07);
+      border: 1px solid rgba(248,113,113,.22);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      color: var(--red);
+      font-size: 14px;
+      margin-bottom: 20px;
+    }
+
+    .not-in-city {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      padding: 64px 0;
+      color: var(--muted);
+      text-align: center;
+    }
+    .not-in-city p   { font-size: 15px; }
+    .not-in-city small { font-size: 13px; }
+
+    .section-label {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+
+    /* ── Movie grid ──────────────────────────────────────────────── */
+    .movies-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
+      gap: 11px;
+    }
+
+    .movie-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 15px;
+      cursor: pointer;
+      transition: border-color 0.15s, transform 0.12s;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .movie-card:hover {
+      border-color: var(--primary);
+      transform: translateY(-2px);
+    }
+
+    .movie-title {
+      font-weight: 600;
+      font-size: 14px;
+      line-height: 1.35;
+      flex: 1;
+    }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+
+    .chip {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: var(--surface2);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .chip-r       { color: var(--yellow);  border-color: rgba(251,191,36,.14); }
+    .chip-p       { color: var(--primary); border-color: rgba(139,124,248,.15); }
+    .chip-presale { color: var(--green);   border-color: rgba(74,222,128,.18); }
+
+    /* ── Sessions view ───────────────────────────────────────────── */
+    .sessions-top {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .sessions-title { font-size: 20px; font-weight: 700; line-height: 1.2; }
+    .sessions-meta  { font-size: 13px; color: var(--muted); margin-top: 3px; }
+
+    /* Date tabs */
+    .date-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+
+    .date-tab {
+      padding: 5px 12px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.12s;
+      line-height: 1.25;
+      text-align: center;
+    }
+    .date-tab:hover  { border-color: var(--primary); color: var(--text); }
+    .date-tab.active { background: var(--primary); border-color: var(--primary); color: #fff; }
+
+    .date-sub {
+      display: block;
+      font-size: 10px;
+      opacity: 0.65;
+    }
+
+    /* Filter */
+    .filter-row { display: flex; gap: 8px; margin-bottom: 16px; }
+    .filter-row input { flex: 1; }
+
+    input[type="text"] {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 7px 12px;
+      border-radius: 8px;
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input[type="text"]:focus       { border-color: var(--primary); }
+    input[type="text"]::placeholder { color: var(--muted); }
+
+    /* Theater card */
+    .theater {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 10px;
+    }
+
+    .theater-name  { font-weight: 600; font-size: 15px; }
+    .theater-neigh {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 1px;
+      margin-bottom: 13px;
+    }
+
+    .session-group { margin-bottom: 10px; }
+    .session-group:last-child { margin-bottom: 0; }
+
+    .type-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      color: var(--primary);
+      text-transform: uppercase;
+      margin-bottom: 7px;
+    }
+
+    .sessions-row { display: flex; flex-wrap: wrap; gap: 7px; }
+
+    .session-pill {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 14px;
+      min-width: 70px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.12s;
+    }
+    .session-pill:hover      { border-color: var(--primary); }
+    .session-pill.disabled   { opacity: 0.35; pointer-events: none; }
+
+    .s-time  { font-size: 17px; font-weight: 700; }
+    .s-price { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    .divider { height: 1px; background: var(--border); margin: 10px 0; }
+
+    .empty {
+      text-align: center;
+      padding: 48px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    /* ── Responsive ──────────────────────────────────────────────── */
+    @media (max-width: 600px) {
+      header       { flex-wrap: wrap; padding: 12px 16px; }
+      .city-bar    { width: 100%; margin-left: 0; }
+      .select-city { flex: 1; width: auto; }
+      main         { padding: 18px 14px; }
+    }
+  </style>
+</head>
+<body>
+<div id="app">
+
+  <header>
+    <div class="brand">🎬 cinema<em>br</em></div>
+    <div class="city-bar">
+      <label>Estado</label>
+      <select
+        class="select-state"
+        v-model="selectedUF"
+        @change="onStateChange"
+        :disabled="!allStates.length"
+      >
+        <option v-for="s in allStates" :key="s.uf" :value="s.uf">{{ s.uf }}</option>
+      </select>
+
+      <label>Cidade</label>
+      <select
+        class="select-city"
+        :value="city"
+        @change="e => onCityChange(e.target.value)"
+        :disabled="!currentStateCities.length"
+      >
+        <option
+          v-for="c in currentStateCities"
+          :key="c.id"
+          :value="c.name"
+        >{{ c.name }}</option>
+      </select>
+    </div>
+  </header>
+
+  <main>
+
+    <div class="error-box" v-if="error">{{ error }}</div>
+
+    <!-- ── Movies ─────────────────────────────────────────────── -->
+    <template v-if="view === 'movies'">
+      <div class="loading" v-if="loading">
+        <div class="spinner"></div>
+        Carregando filmes…
+      </div>
+      <template v-else>
+        <p class="section-label">
+          <strong>{{ playingCount }}</strong> em cartaz
+          <span v-if="presaleCount"> · {{ presaleCount }} em pré-venda</span>
+          <span> — {{ city }}</span>
+        </p>
+        <div class="movies-grid">
+          <div
+            class="movie-card"
+            v-for="m in movies"
+            :key="m.id"
+            @click="selectMovie(m)"
+          >
+            <div class="movie-title">{{ m.title }}</div>
+            <div class="chips">
+              <span class="chip chip-presale" v-if="m.inPreSale">Pré-venda</span>
+              <span class="chip chip-r" v-if="m.contentRating">{{ m.contentRating }}</span>
+              <span class="chip" v-if="m.duration">{{ m.duration }}min</span>
+              <span class="chip chip-p" v-if="m.countPlaying && !m.inPreSale">{{ m.countPlaying }} salas</span>
+            </div>
+          </div>
+        </div>
+        <div class="empty" v-if="!movies.length">Nenhum filme encontrado.</div>
+      </template>
+    </template>
+
+    <!-- ── Sessions ───────────────────────────────────────────── -->
+    <template v-else-if="view === 'sessions'">
+
+      <div class="sessions-top">
+        <button class="btn btn-ghost" @click="goBack">← Voltar</button>
+        <div>
+          <div class="sessions-title">{{ selectedMovie.title }}</div>
+          <div class="sessions-meta">
+            <span v-if="selectedMovie.contentRating">{{ selectedMovie.contentRating }}</span>
+            <span v-if="selectedMovie.duration"> · {{ selectedMovie.duration }}min</span>
+            <span> · {{ city }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Movie not available in this city -->
+      <div class="not-in-city" v-if="movieNotInCity">
+        <p>Este filme não está em cartaz em <strong>{{ city }}</strong>.</p>
+        <small>Pode estar disponível em outras cidades.</small>
+        <button class="btn btn-ghost" @click="goBack">← Voltar à lista</button>
+      </div>
+
+      <!-- Loading (initial + date switch) -->
+      <div class="loading" v-else-if="loading || sessionsLoading">
+        <div class="spinner"></div>
+        Buscando sessões…
+      </div>
+
+      <template v-else-if="sessions">
+        <!-- Date tabs -->
+        <div class="date-tabs" v-if="dates.length">
+          <button
+            v-for="d in dates"
+            :key="d.date"
+            class="date-tab"
+            :class="{ active: selectedDate === d.date }"
+            @click="selectDate(d.date)"
+          >
+            {{ d.isToday ? 'Hoje' : d.dateFormatted }}
+            <span class="date-sub">{{ d.dayOfWeek?.slice(0, 3) }}</span>
+          </button>
+        </div>
+
+        <!-- Theater filter -->
+        <div class="filter-row">
+          <input
+            type="text"
+            v-model="theaterFilter"
+            placeholder="Filtrar por cinema…"
+          />
+        </div>
+
+        <!-- Theater list -->
+        <div
+          class="theater"
+          v-for="t in filteredTheaters"
+          :key="t.id"
+          :style="!t.enabled ? 'opacity:.42' : ''"
+        >
+          <div class="theater-name">{{ t.name }}</div>
+          <div class="theater-neigh">{{ t.neighborhood }}</div>
+
+          <div
+            class="session-group"
+            v-for="(st, i) in t.sessionTypes"
+            :key="i"
+          >
+            <div class="type-label">{{ st.type.join(' · ') }}</div>
+            <div class="sessions-row">
+              <div
+                v-for="s in st.sessions"
+                :key="s.id"
+                class="session-pill"
+                :class="{ disabled: !s.enabled }"
+                :title="s.room || ''"
+              >
+                <div class="s-time">{{ s.time }}</div>
+                <div class="s-price" v-if="s.price">{{ fmtPrice(s.price) }}</div>
+              </div>
+            </div>
+            <div class="divider" v-if="i < t.sessionTypes.length - 1"></div>
+          </div>
+        </div>
+
+        <div class="empty" v-if="filteredTheaters.length === 0 && theaterFilter">
+          Nenhum cinema com "{{ theaterFilter }}".
+        </div>
+        <div class="empty" v-else-if="filteredTheaters.length === 0">
+          Sem sessões disponíveis.
+        </div>
+      </template>
+
+      <div class="empty" v-else-if="!movieNotInCity">
+        Sem sessões para esta data.
+      </div>
+
+    </template>
+
+  </main>
+</div>
+
+<script type="module">
+import { createApp, ref, computed } from 'https://unpkg.com/vue@3/dist/vue.esm-browser.js'
+
+createApp({
+  setup() {
+    // ── City state ────────────────────────────────────────────────
+    const allStates    = ref([])
+    const selectedUF   = ref('CE')
+    const city         = ref('Fortaleza')
+
+    const currentStateCities = computed(() => {
+      const st = allStates.value.find(s => s.uf === selectedUF.value)
+      return st ? [...st.cities].sort((a, b) => a.name.localeCompare(b.name)) : []
+    })
+
+    // ── App state ─────────────────────────────────────────────────
+    const view            = ref('movies')
+    const loading         = ref(false)
+    const sessionsLoading = ref(false)
+    const error           = ref(null)
+
+    const movies          = ref([])
+    const selectedMovie   = ref(null)
+    const movieNotInCity  = ref(false)
+
+    const dates           = ref([])
+    const selectedDate    = ref(null)
+    const sessions        = ref(null)
+    const theaterFilter   = ref('')
+
+    // ── Computed ──────────────────────────────────────────────────
+    const playingCount = computed(() => movies.value.filter(m => !m.inPreSale).length)
+    const presaleCount = computed(() => movies.value.filter(m => m.inPreSale).length)
+
+    const filteredTheaters = computed(() => {
+      const all = sessions.value?.theaters ?? []
+      const q   = theaterFilter.value.toLowerCase().trim()
+      return q ? all.filter(t => t.name.toLowerCase().includes(q)) : all
+    })
+
+    // ── Helpers ───────────────────────────────────────────────────
+    function fmtPrice(v) {
+      return 'R$\u00a0' + Number(v).toFixed(2).replace('.', ',')
+    }
+
+    async function apiFetch(path) {
+      const res = await fetch(path)
+      if (res.status === 404) return null
+      if (!res.ok) throw new Error(await res.text().catch(() => res.statusText))
+      return res.json()
+    }
+
+    // ── Fetchers ──────────────────────────────────────────────────
+    async function fetchStates() {
+      try {
+        const data = await apiFetch('/cidades')
+        allStates.value = (data ?? []).sort((a, b) => a.name.localeCompare(b.name))
+      } catch { /* non-critical */ }
+    }
+
+    async function fetchMovies() {
+      loading.value = true
+      error.value   = null
+      try {
+        movies.value = await apiFetch(`/filmes?cidade=${encodeURIComponent(city.value)}`) ?? []
+      } catch (e) {
+        error.value = `Erro ao buscar filmes: ${e.message}`
+      } finally {
+        loading.value = false
+      }
+    }
+
+    async function fetchDates(movie) {
+      const key = encodeURIComponent(movie.urlKey ?? movie.title)
+      try {
+        const data = await apiFetch(`/sessoes/${key}/datas?cidade=${encodeURIComponent(city.value)}`)
+        dates.value = data?.dates ?? []
+      } catch {
+        dates.value = []
+      }
+    }
+
+    async function fetchSessions(movie, date, inline = false) {
+      inline ? (sessionsLoading.value = true) : (loading.value = true)
+      error.value = null
+      try {
+        const key = encodeURIComponent(movie.urlKey ?? movie.title)
+        let url = `/sessoes/${key}?cidade=${encodeURIComponent(city.value)}`
+        if (date) url += `&data=${encodeURIComponent(date)}`
+        const data = await apiFetch(url)
+        sessions.value = data
+        if (data?.date) selectedDate.value = data.date
+      } catch (e) {
+        error.value = `Erro ao buscar sessões: ${e.message}`
+        sessions.value = null
+      } finally {
+        sessionsLoading.value = false
+        loading.value = false
+      }
+    }
+
+    // ── Actions ───────────────────────────────────────────────────
+    async function selectMovie(movie) {
+      selectedMovie.value  = movie
+      view.value           = 'sessions'
+      theaterFilter.value  = ''
+      dates.value          = []
+      sessions.value       = null
+      selectedDate.value   = null
+      movieNotInCity.value = false
+
+      await Promise.all([fetchDates(movie), fetchSessions(movie, null)])
+
+      // If no sessions and no dates, the movie isn't showing in this city
+      if (!sessions.value && dates.value.length === 0) {
+        movieNotInCity.value = true
+      }
+    }
+
+    async function selectDate(date) {
+      await fetchSessions(selectedMovie.value, date, true)
+    }
+
+    function goBack() {
+      view.value           = 'movies'
+      selectedMovie.value  = null
+      sessions.value       = null
+      dates.value          = []
+      movieNotInCity.value = false
+      error.value          = null
+    }
+
+    function onStateChange() {
+      const first = currentStateCities.value[0]
+      if (first) {
+        city.value  = first.name
+        view.value  = 'movies'
+        fetchMovies()
+      }
+    }
+
+    function onCityChange(newName) {
+      city.value = newName
+      view.value = 'movies'
+      fetchMovies()
+    }
+
+    // ── Init ──────────────────────────────────────────────────────
+    Promise.all([fetchStates(), fetchMovies()])
+
+    return {
+      allStates, selectedUF, city, currentStateCities,
+      view, loading, sessionsLoading, error,
+      movies, playingCount, presaleCount, selectedMovie, movieNotInCity,
+      dates, selectedDate, sessions, theaterFilter,
+      filteredTheaters,
+      selectMovie, selectDate, goBack,
+      onStateChange, onCityChange,
+      fmtPrice,
+    }
+  }
+}).mount('#app')
+</script>
+</body>
+</html>

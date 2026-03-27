@@ -16,8 +16,10 @@ pip install -r requirements.txt
 cinema/
 ├── core.py          ← cache, requisições HTTP, chamadas à API ingresso.com, helpers
 ├── cli.py           ← display (rich), comandos, argparse
-├── app.py           ← API web (FastAPI)
+├── app.py           ← API web (FastAPI) + serve o frontend
 ├── cinema.py        ← entrypoint do CLI (8 linhas, chama cli.py)
+├── static/
+│   └── index.html   ← frontend Vue 3 (CDN, sem build step)
 ├── README.md        ← este arquivo
 ├── API_RESEARCH.md  ← documentação completa dos endpoints da ingresso.com
 └── DATA_STRATEGY.md ← análise sobre o que vale armazenar e como
@@ -58,7 +60,7 @@ python cinema.py filmes
 python cinema.py filmes --cidade "recife"
 ```
 
-Lista os filmes em cartaz na cidade indicada, ordenados por número de salas nacionais. Mostra classificação indicativa, duração e data de estreia. Padrão: Fortaleza.
+Lista os filmes realmente em cartaz na cidade indicada (com sessões reais hoje ou amanhã). Mostra classificação indicativa, duração e data de estreia. Padrão: Fortaleza.
 
 **Opções:**
 
@@ -161,13 +163,27 @@ Legenda padrão: `○` livre · `●` ocupado · `◇` SuperSeat · `()` namorad
 
 ---
 
-## API web
+## Frontend web
 
 ```bash
 uvicorn app:app --reload
 ```
 
-Disponível em `http://localhost:8000`. Documentação interativa em `http://localhost:8000/docs`.
+Abra `http://localhost:8000` — o FastAPI serve o frontend automaticamente.
+
+Features:
+- Seletor de estado + cidade (cascata, qualquer cidade do Brasil; padrão: Fortaleza)
+- Grid de filmes realmente em cartaz na cidade selecionada
+- Chip "Pré-venda" para filmes com ingressos à venda mas ainda não exibidos
+- Aba de datas disponíveis para cada filme
+- Lista de cinemas com sessões agrupadas por tipo (Laser, IMAX, Dublado…)
+- Filtro de cinema por nome
+- Preço por sessão com taxa de serviço separada
+- Tema escuro
+
+## API web
+
+Documentação interativa em `http://localhost:8000/docs`.
 
 A API compartilha o mesmo cache do CLI (`~/.cache/cinema-fortaleza/`), então respostas já consultadas no terminal são instantâneas na API e vice-versa.
 
@@ -182,7 +198,6 @@ A API compartilha o mesmo cache do CLI (`~/.cache/cinema-fortaleza/`), então re
 | `GET` | `/tickets/{session_id}/{section_id}` | Preços com taxa de serviço separada |
 | `GET` | `/assentos/{session_id}/{section_id}` | Mapa de assentos completo |
 
-> Endpoint `GET /cinemas?cidade=` não existe ainda na API web — por enquanto só no CLI.
 
 O parâmetro `filme` e `cidade` aceitam texto parcial sem acento, igual ao CLI. Cidade padrão: Fortaleza.
 
@@ -217,7 +232,8 @@ Respostas salvas em `~/.cache/cinema-fortaleza/` como JSON com TTL. Compartilhad
 | Dado | TTL | Motivo |
 |---|---|---|
 | Cidades | 24 horas | Raramente muda |
-| Lista de filmes | 1 hora | Muda quando estreia filme novo |
+| Lista de filmes (catálogo) | 1 hora | Muda quando estreia filme novo |
+| Filmes na cidade (por cinema) | 15 min | Derivado das sessões; chave inclui data |
 | Lista de cinemas | 1 hora | Estável |
 | Sessões / programação | 15 min | Estável após ser publicada |
 | Preços (tickets) | 1 hora | Raramente muda durante o dia |
@@ -234,9 +250,16 @@ GET /v0/theaters/city/{id}?partnership=ingresso.com
 
 **`filmes` / `GET /filmes`**
 ```
-GET /v0/events?cityId={id}&isPlaying=true&partnership=ingresso.com
-  → filtra isPlaying=true
-  → ordena por countIsPlaying (número de salas nacional)
+1. GET /v0/theaters/city/{id}  (cached 1h)
+   → top-30 cinemas por número de salas
+
+2. [paralelo, 10 threads] GET /v0/sessions/city/{id}/theater/{tid}/.../groupBy/sessionType?date=D
+   → hoje + amanhã → coleta IDs dos filmes com sessões reais
+   → resultado cacheado por 15min (chave inclui data)
+
+3. GET /v0/events?cityId={id}&isPlaying=true
+   → filtra para filmes do passo 2 + pré-vendas com datas disponíveis
+   → ordena por countIsPlaying
 ```
 
 **`sessoes` / `GET /sessoes/{filme}`**
@@ -322,9 +345,9 @@ Para comprar, use o site ou app da ingresso.com ou a bilheteria do cinema.
 
 ## Limitações conhecidas
 
-- **`filmes`** lista filmes nacionais em cartaz. Alguns podem não ter sessões na cidade consultada; nesse caso `sessoes` informa.
 - **`session.price` na saída padrão** pode ser o preço de SuperSeat quando a sala tem recliners — UCI Iguatemi é o caso conhecido. Use `--precos` ou `GET /tickets` para o breakdown real.
 - **Sessões de hoje** às vezes retornam vazio se o horário já passou — o projeto avança automaticamente para a próxima data disponível.
+- **Filmes recém-estreados** podem não aparecer na listagem por cidade até que as sessões sejam publicadas no dia anterior.
 
 ---
 

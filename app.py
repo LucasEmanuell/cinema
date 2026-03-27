@@ -11,13 +11,19 @@ Endpoints:
   GET /tickets/{session_id}/{section_id}
   GET /assentos/{session_id}/{section_id}
 """
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+
+_STATIC = Path(__file__).parent / "static"
 
 from core import (
     APIError,
-    api_movies, api_session_dates, api_sessions, api_tickets, api_seats,
-    api_states, find_movie, normalize, resolve_date, resolve_city, parse_tickets,
+    api_movies, api_movies_in_city, api_session_dates, api_sessions,
+    api_tickets, api_seats, api_states, find_movie, normalize,
+    resolve_date, resolve_city, parse_tickets,
 )
 
 app = FastAPI(
@@ -46,6 +52,12 @@ def _resolve_city(cidade: str | None) -> tuple[int, str]:
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
+@app.get("/", include_in_schema=False)
+def serve_frontend():
+    """Serve the Vue SPA."""
+    return FileResponse(_STATIC / "index.html")
+
+
 @app.get("/cidades", summary="Lista todas as cidades disponíveis")
 def get_cidades():
     """Retorna todos os estados e cidades com sessões disponíveis na ingresso.com."""
@@ -62,7 +74,7 @@ def get_filmes(cidade: str | None = Query(None, description="Cidade (padrão: Fo
     """
     try:
         city_id, _ = _resolve_city(cidade)
-        movies = api_movies(city_id)
+        movies = api_movies_in_city(city_id)
     except HTTPException:
         raise
     except APIError as e:
@@ -76,9 +88,10 @@ def get_filmes(cidade: str | None = Query(None, description="Cidade (padrão: Fo
             "contentRating": m.get("contentRating"),
             "duration":      m.get("duration"),
             "synopsis":      m.get("synopsis"),
-            "posterUrl":     m.get("posterUrl") or m.get("images", [None])[0],
+            "posterUrl":     next((img.get("url") for img in m.get("images") or []), None),
             "premiereDate":  m.get("premiereDate"),
             "countPlaying":  m.get("countIsPlaying", 0),
+            "inPreSale":     m.get("inPreSale", False),
         }
         for m in movies
     ]
