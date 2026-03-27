@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from core import (
     APIError,
     api_movies, api_session_dates, api_sessions, api_tickets, api_seats,
-    find_movie, normalize, resolve_date, parse_tickets,
+    api_states, find_movie, normalize, resolve_date, resolve_city, parse_tickets,
 )
 
 app = FastAPI(
@@ -37,16 +37,34 @@ app.add_middleware(
 def _api_error(e: APIError):
     raise HTTPException(status_code=503, detail=f"Erro ao contactar ingresso.com: {e}")
 
+def _resolve_city(cidade: str | None) -> tuple[int, str]:
+    city_id, city_name = resolve_city(cidade)
+    if city_id is None:
+        raise HTTPException(status_code=404, detail=f"Cidade não encontrada: {cidade}")
+    return city_id, city_name
+
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
-@app.get("/filmes", summary="Filmes em cartaz em Fortaleza")
-def get_filmes():
+@app.get("/cidades", summary="Lista todas as cidades disponíveis")
+def get_cidades():
+    """Retorna todos os estados e cidades com sessões disponíveis na ingresso.com."""
+    try:
+        return api_states()
+    except APIError as e:
+        _api_error(e)
+
+
+@app.get("/filmes", summary="Filmes em cartaz")
+def get_filmes(cidade: str | None = Query(None, description="Cidade (padrão: Fortaleza)")):
     """
-    Lista os filmes em cartaz em Fortaleza, ordenados por número de salas.
+    Lista os filmes em cartaz na cidade indicada, ordenados por número de salas.
     """
     try:
-        movies = api_movies()
+        city_id, _ = _resolve_city(cidade)
+        movies = api_movies(city_id)
+    except HTTPException:
+        raise
     except APIError as e:
         _api_error(e)
 
@@ -67,27 +85,34 @@ def get_filmes():
 
 
 @app.get("/sessoes/{filme}/datas", summary="Datas disponíveis para um filme")
-def get_datas(filme: str):
+def get_datas(
+    filme:  str,
+    cidade: str | None = Query(None, description="Cidade (padrão: Fortaleza)"),
+):
     """
-    Retorna as datas em que o filme tem sessões em Fortaleza.
+    Retorna as datas em que o filme tem sessões na cidade indicada.
     `filme` pode ser título parcial, sem acento, ou o ID numérico.
     """
     try:
-        movies = api_movies()
+        city_id, _ = _resolve_city(cidade)
+        movies = api_movies(city_id)
         movie  = find_movie(filme, movies)
         if not movie:
             raise HTTPException(status_code=404, detail=f"Filme não encontrado: {filme}")
 
-        dates = api_session_dates(movie["id"]) or []
+        dates = api_session_dates(movie["id"], city_id) or []
+    except HTTPException:
+        raise
     except APIError as e:
         _api_error(e)
 
     return {"movie": {"id": movie["id"], "title": movie["title"]}, "dates": dates}
 
 
-@app.get("/sessoes/{filme}", summary="Sessões de um filme em Fortaleza")
+@app.get("/sessoes/{filme}", summary="Sessões de um filme")
 def get_sessoes(
     filme:  str,
+    cidade: str | None = Query(None, description="Cidade (padrão: Fortaleza)"),
     data:   str | None = Query(None, description="YYYY-MM-DD, 'amanha', '+1', '+2'…"),
     teatro: str | None = Query(None, description="Filtro parcial por nome do cinema"),
     hora:   str | None = Query(None, description="Filtro por horário, ex: '20' ou '20:00'"),
@@ -97,26 +122,29 @@ def get_sessoes(
     Se não houver sessões hoje e `data` não foi informado, avança para a próxima data disponível.
     """
     try:
-        movies = api_movies()
+        city_id, city_name = _resolve_city(cidade)
+        movies = api_movies(city_id)
         movie  = find_movie(filme, movies)
         if not movie:
             raise HTTPException(status_code=404, detail=f"Filme não encontrado: {filme}")
 
         date_str, explicit = resolve_date(data)
-        day = api_sessions(movie["id"], date_str)
+        day = api_sessions(movie["id"], date_str, city_id)
 
         if not day or not day.get("theaters"):
-            dates_raw = api_session_dates(movie["id"]) or []
+            dates_raw = api_session_dates(movie["id"], city_id) or []
             if not explicit and dates_raw:
                 date_str = dates_raw[0]["date"]
-                day = api_sessions(movie["id"], date_str)
+                day = api_sessions(movie["id"], date_str, city_id)
 
         if not day or not day.get("theaters"):
             raise HTTPException(
                 status_code=404,
-                detail=f"Sem sessões para '{movie['title']}' em Fortaleza na data {date_str}",
+                detail=f"Sem sessões para '{movie['title']}' em {city_name} na data {date_str}",
             )
 
+    except HTTPException:
+        raise
     except APIError as e:
         _api_error(e)
 
@@ -138,6 +166,7 @@ def get_sessoes(
 
     return {
         "movie":         {"id": movie["id"], "title": movie["title"], "urlKey": movie.get("urlKey")},
+        "city":          city_name,
         "date":          date_str,
         "dateFormatted": day.get("dateFormatted"),
         "dayOfWeek":     day.get("dayOfWeek"),

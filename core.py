@@ -24,6 +24,7 @@ TTL = {
     "sessions":  900,   # 15m — schedule is stable once published
     "tickets":  3600,   # 1h  — prices rarely change intraday
     "seats":     300,   # 5m  — occupancy changes in real time
+    "cities":  86400,   # 24h — cities almost never change
 }
 
 
@@ -124,6 +125,15 @@ def api_seats(session_id: str, section_id: str):
         ttl=TTL["seats"],
     )
 
+def api_states():
+    """All Brazilian states and their cities."""
+    return fetch(
+        f"{CONTENT_API}/states",
+        params={"partnership": PARTNERSHIP},
+        cache_key="states",
+        ttl=TTL["cities"],
+    ) or []
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def normalize(s: str) -> str:
@@ -132,6 +142,32 @@ def normalize(s: str) -> str:
         c for c in unicodedata.normalize("NFD", s.lower())
         if unicodedata.category(c) != "Mn"
     ).strip()
+
+def find_city(query: str) -> dict | None:
+    """Find a city by partial name or UF — accent/case-insensitive.
+    Returns city dict with keys: id, name, uf, state, urlKey.
+    """
+    states = api_states()
+    all_cities = [c for s in states for c in s.get("cities", [])]
+    q = normalize(query)
+
+    # Exact match first (urlKey or full name)
+    for c in all_cities:
+        if c.get("urlKey") == q or normalize(c["name"]) == q:
+            return c
+
+    # Partial name match
+    matches = [c for c in all_cities if q in normalize(c["name"])]
+    return matches[0] if matches else None
+
+def resolve_city(arg: str | None) -> tuple[int, str]:
+    """Resolve --cidade argument to (city_id, city_name). Defaults to Fortaleza."""
+    if not arg:
+        return CITY_ID, "Fortaleza"
+    city = find_city(arg)
+    if not city:
+        return None, None
+    return int(city["id"]), city["name"]
 
 def find_movie(query: str, movies: list) -> dict | None:
     """Match movie by ID, urlKey, or partial title — accent/case-insensitive."""

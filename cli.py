@@ -20,7 +20,7 @@ from rich import box
 from core import (
     APIError,
     api_movies, api_session_dates, api_sessions, api_tickets, api_seats,
-    find_movie, normalize, resolve_date, parse_tickets,
+    api_states, find_movie, normalize, resolve_date, resolve_city, parse_tickets,
 )
 
 console = Console()
@@ -197,15 +197,21 @@ def render_seat_map(data: dict, show_numbers: bool = False):
 # ── Commands ──────────────────────────────────────────────────────────────────
 
 def cmd_filmes(args):
-    with console.status("[dim]Buscando filmes em cartaz em Fortaleza...[/dim]"):
-        movies = api_movies()
+    city_id, city_name = resolve_city(args.cidade)
+    if city_id is None:
+        console.print(f"[red]Cidade não encontrada:[/red] {args.cidade}")
+        console.print("[dim]Tente parte do nome, ex: 'recife', 'sao paulo', 'belo horizonte'[/dim]")
+        return
+
+    with console.status(f"[dim]Buscando filmes em cartaz em {city_name}...[/dim]"):
+        movies = api_movies(city_id)
 
     if not movies:
         console.print("[red]Nenhum filme encontrado.[/red]")
         return
 
     table = Table(
-        title="🎬  Filmes em Cartaz — Fortaleza",
+        title=f"🎬  Filmes em Cartaz — {city_name}",
         box=box.ROUNDED,
         border_style="bright_black",
         header_style="bold",
@@ -237,22 +243,28 @@ def cmd_filmes(args):
 
 
 def cmd_sessoes(args):
+    city_id, city_name = resolve_city(args.cidade)
+    if city_id is None:
+        console.print(f"[red]Cidade não encontrada:[/red] {args.cidade}")
+        console.print("[dim]Tente parte do nome, ex: 'recife', 'sao paulo', 'belo horizonte'[/dim]")
+        return
+
     date_str, explicit = resolve_date(args.data)
 
-    with console.status("[dim]Buscando filmes...[/dim]"):
-        movies = api_movies()
+    with console.status(f"[dim]Buscando filmes em {city_name}...[/dim]"):
+        movies = api_movies(city_id)
 
     movie = find_movie(args.filme, movies)
     if not movie:
         console.print(f"[red]Filme não encontrado:[/red] {args.filme}")
-        console.print("[dim]Use 'python cinema.py filmes' para ver o que está em cartaz.[/dim]")
+        console.print(f"[dim]Use 'python cinema.py filmes --cidade \"{args.cidade or city_name}\"' para ver o que está em cartaz.[/dim]")
         return
 
     with console.status(f"[dim]Buscando sessões de {movie['title']}...[/dim]"):
-        day = api_sessions(movie["id"], date_str)
+        day = api_sessions(movie["id"], date_str, city_id)
 
     if not day or not day.get("theaters"):
-        dates_raw = api_session_dates(movie["id"]) or []
+        dates_raw = api_session_dates(movie["id"], city_id) or []
         if not explicit and dates_raw:
             next_date = dates_raw[0]["date"]
             console.print(
@@ -260,7 +272,7 @@ def cmd_sessoes(args):
                 f"mostrando próxima data disponível: {next_date}[/dim]"
             )
             date_str = next_date
-            day = api_sessions(movie["id"], date_str)
+            day = api_sessions(movie["id"], date_str, city_id)
 
         if not day or not day.get("theaters"):
             if dates_raw:
@@ -268,11 +280,11 @@ def cmd_sessoes(args):
                     f"{d['date']} ({d['dayOfWeek'][:3]})" for d in dates_raw
                 )
                 console.print(
-                    f"\n[yellow]Sem sessões em Fortaleza para {date_str}.[/yellow]\n"
+                    f"\n[yellow]Sem sessões em {city_name} para {date_str}.[/yellow]\n"
                     f"Datas disponíveis:\n  {dates_str}\n"
                 )
             else:
-                console.print(f"\n[red]{movie['title']} não está em cartaz em Fortaleza.[/red]\n")
+                console.print(f"\n[red]{movie['title']} não está em cartaz em {city_name}.[/red]\n")
             return
 
     dow      = day.get("dayOfWeek", "")
@@ -292,7 +304,7 @@ def cmd_sessoes(args):
 
     console.print()
     console.rule(
-        f"[bold]{movie['title']}[/bold]  [dim]·  Fortaleza  ·  {dow}, {date_fmt}[/dim]",
+        f"[bold]{movie['title']}[/bold]  [dim]·  {city_name}  ·  {dow}, {date_fmt}[/dim]",
         align="left",
     )
     console.print()
@@ -427,12 +439,14 @@ def cmd_assentos(args):
 def main():
     parser = argparse.ArgumentParser(
         prog="cinema",
-        description="Sessões de cinema em Fortaleza — rápido e sem enrolação.",
+        description="Sessões de cinema no Brasil — rápido e sem enrolação.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 exemplos:
   python cinema.py filmes
+  python cinema.py filmes --cidade "recife"
   python cinema.py sessoes "super mario"
+  python cinema.py sessoes "super mario" --cidade "sao paulo"
   python cinema.py sessoes "super mario" --data amanha
   python cinema.py sessoes "super mario" --data 2026-04-01
   python cinema.py sessoes "velhos bandidos" --precos
@@ -442,10 +456,14 @@ exemplos:
     )
     sub = parser.add_subparsers(dest="cmd", metavar="comando")
 
-    sub.add_parser("filmes", help="Lista filmes em cartaz em Fortaleza")
+    pf = sub.add_parser("filmes", help="Lista filmes em cartaz")
+    pf.add_argument("--cidade", metavar="CIDADE",
+                    help="Cidade (padrão: Fortaleza). Parcial, sem acento, ex: 'recife', 'sao paulo'")
 
-    p = sub.add_parser("sessoes", help="Sessões de um filme em Fortaleza")
+    p = sub.add_parser("sessoes", help="Sessões de um filme")
     p.add_argument("filme",      help="Título (ou parte) do filme")
+    p.add_argument("--cidade",   metavar="CIDADE",
+                   help="Cidade (padrão: Fortaleza). Parcial, sem acento, ex: 'recife', 'sao paulo'")
     p.add_argument("--data",     metavar="DATA",
                    help="Data: YYYY-MM-DD, 'amanha', '+1', '+2'… (padrão: hoje, auto-avança se vazio)")
     p.add_argument("--precos",   action="store_true",
