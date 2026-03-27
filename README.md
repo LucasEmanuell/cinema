@@ -1,22 +1,36 @@
-# cinema.py
+# cinema-fortaleza
 
 Sessões de cinema em Fortaleza — mais rápido que o app e o site.
+
+Funciona como **CLI** e como **API web** (para frontends).
 
 ## Instalação
 
 ```bash
-pip install requests rich
+pip install requests rich fastapi uvicorn
 ```
 
-## Uso
+## Estrutura do projeto
 
 ```
-python cinema.py <comando> [opções]
+cinema/
+├── core.py          ← cache, requisições HTTP, chamadas à API ingresso.com, helpers
+├── cli.py           ← display (rich), comandos, argparse
+├── app.py           ← API web (FastAPI)
+├── cinema.py        ← entrypoint do CLI (8 linhas, chama cli.py)
+├── README.md        ← este arquivo
+├── API_RESEARCH.md  ← documentação completa dos endpoints da ingresso.com
+├── APP_DESIGN.md    ← decisões de arquitetura e features planejadas
+└── DATA_STRATEGY.md ← análise sobre o que vale armazenar e como
 ```
 
 ---
 
-## Comandos
+## CLI
+
+```bash
+python cinema.py <comando> [opções]
+```
 
 ### `filmes` — O que está em cartaz
 
@@ -116,11 +130,41 @@ Legenda padrão: `○` livre · `●` ocupado · `◇` SuperSeat · `()` namorad
 
 ---
 
-## Como o script funciona
+## API web
+
+```bash
+uvicorn app:app --reload
+```
+
+Disponível em `http://localhost:8000`. Documentação interativa em `http://localhost:8000/docs`.
+
+A API compartilha o mesmo cache do CLI (`~/.cache/cinema-fortaleza/`), então respostas já consultadas no terminal são instantâneas na API e vice-versa.
+
+### Endpoints
+
+| Método | Rota | Descrição |
+|---|---|---|
+| `GET` | `/filmes` | Lista filmes em cartaz em Fortaleza |
+| `GET` | `/sessoes/{filme}` | Sessões de um filme (aceita `?data=`, `?teatro=`, `?hora=`) |
+| `GET` | `/sessoes/{filme}/datas` | Datas disponíveis para um filme |
+| `GET` | `/tickets/{session_id}/{section_id}` | Preços com taxa de serviço separada |
+| `GET` | `/assentos/{session_id}/{section_id}` | Mapa de assentos completo |
+
+O parâmetro `filme` aceita título parcial sem acento, igual ao CLI.
+
+**Exemplo:**
+```bash
+curl "http://localhost:8000/sessoes/panico?teatro=via+sul&data=amanha"
+curl "http://localhost:8000/assentos/84262624/5472265"
+```
+
+---
+
+## Como funciona
 
 ### Fontes de dados
 
-O script usa duas APIs públicas da ingresso.com, descobertas por engenharia reversa (o Swagger oficial está vazio):
+Duas APIs públicas da ingresso.com, descobertas por engenharia reversa (o Swagger oficial está vazio):
 
 | Base URL | Usado para |
 |---|---|
@@ -131,7 +175,7 @@ Todas as requisições usam `?partnership=ingresso.com`. Sem autenticação para
 
 ### Cache local
 
-O script salva as respostas em `~/.cache/cinema-fortaleza/` como arquivos JSON com TTL:
+Respostas salvas em `~/.cache/cinema-fortaleza/` como JSON com TTL. Compartilhado entre CLI e API.
 
 | Dado | TTL | Motivo |
 |---|---|---|
@@ -140,85 +184,60 @@ O script salva as respostas em `~/.cache/cinema-fortaleza/` como arquivos JSON c
 | Preços (tickets) | 1 hora | Raramente muda durante o dia |
 | Mapa de assentos | 5 min | Muda conforme ingressos são vendidos |
 
-Na prática: a primeira chamada vai à API, as seguintes são instantâneas até o TTL expirar.
+### Fluxo de dados
 
-### Fluxo de dados por comando
-
-**`filmes`**
+**`filmes` / `GET /filmes`**
 ```
 GET /v0/events?cityId=36&isPlaying=true&partnership=ingresso.com
   → filtra isPlaying=true
   → ordena por countIsPlaying (número de salas nacional)
-  → mostra os 30 primeiros
 ```
 
-**`sessoes`**
+**`sessoes` / `GET /sessoes/{filme}`**
 ```
-1. GET /v0/events?cityId=36&isPlaying=true  (cached)
+1. GET /v0/events  (cached)
    → busca o filme por título parcial (tolerante a acentos)
 
 2. Resolve a data: hoje / amanha / +N / YYYY-MM-DD
-   → se não houver sessões hoje, busca datas disponíveis e auto-avança
+   → se não houver sessões hoje, auto-avança para a próxima data disponível
 
-3. GET /v0/sessions/city/36/event/{id}/partnership/ingresso.com/groupBy/sessionType?date=D
-   → retorna lista de cinemas, cada um com sessionTypes[]
-   → cada sessionType tem sessions[] com: id, time, room, price, defaultSector
-   → filtra por --teatro e --hora se fornecidos
+3. GET /v0/sessions/city/36/event/{id}/.../groupBy/sessionType?date=D
+   → lista de cinemas → sessionTypes[] → sessions[]
+   → filtra por teatro e hora se fornecidos
 
-4. (se --precos) GET /v1/sessions/{id}/sections/{sectionId}/tickets
-   → retorna: price (bilheteria), service (taxa online), total
-   → detecta Meia-Entrada com taxa desproporcional (28% vs 14% da Inteira)
+4. (precos / GET /tickets) GET /v1/sessions/{id}/sections/{sectionId}/tickets
+   → price (bilheteria), service (taxa online), total
+   → detecta Meia-Entrada com taxa desproporcional (> 20%)
 
-5. (se --ocupacao ou --assentos) GET /v1/sessions/{id}/sections/{sectionId}/seats
-   → conta seats com status "Available" vs total
-   → calcula % de lotação; se --assentos, renderiza mapa inline
-```
-
-**`assentos`**
-```
-GET /v1/sessions/{sessionId}/sections/{sectionId}/seats
-  → totalSeats, lines[].seats[].status
-  → renderiza mapa ASCII
+5. (ocupacao/assentos / GET /assentos) GET /v1/sessions/{id}/sections/{sectionId}/seats
+   → totalSeats, status por assento, geometria da sala
 ```
 
 ### Sobre os preços
 
-A taxa de serviço da ingresso.com é **sempre 14% do preço da Inteira**, aplicada como valor fixo por sessão — independente do tipo de ingresso comprado:
+A taxa de serviço da ingresso.com é **sempre 14% do preço da Inteira**, aplicada como valor fixo por sessão — independente do tipo de ingresso:
 
-- **Inteira:** R$ 44,00 + R$ 6,16 taxa = R$ 50,16 (14% sobre o ingresso)
-- **Meia-Entrada:** R$ 22,00 + R$ 6,16 taxa = R$ 28,16 (**28% sobre o ingresso**)
+- **Inteira:** R$ 44,00 + R$ 6,16 taxa = R$ 50,16 (14%)
+- **Meia-Entrada:** R$ 22,00 + R$ 6,16 taxa = R$ 28,16 (**28%**)
 
-Para quem paga meia (estudantes, idosos, PCD, jovens 15–29 de baixa renda), a taxa online representa 28% do valor do ingresso — o mesmo que o desconto da meia. O script avisa quando isso acontece para que o usuário decida se vale a pena comprar na bilheteria.
+Para quem paga meia (estudantes, idosos, PCD), a taxa online equivale ao próprio desconto. O CLI avisa e a API inclui o campo `meia_fee_warning: true`.
 
-**Exceção:** UCI tem seus próprios tickets "UNIQUE MEIA ENTRADA" com taxa proporcional de 14%. Nesses casos nenhum aviso é exibido.
-
----
-
-## Estrutura do projeto
-
-```
-cinema/
-├── cinema.py        ← script principal
-├── README.md        ← este arquivo
-├── API_RESEARCH.md  ← documentação completa dos endpoints da API
-├── APP_DESIGN.md    ← decisões de arquitetura e features planejadas
-└── DATA_STRATEGY.md ← análise sobre o que vale armazenar e como
-```
+**Exceção:** UCI tem tickets "UNIQUE MEIA ENTRADA" com taxa proporcional de 14%. Nesses casos nenhum aviso é emitido.
 
 ---
 
 ## Limitações conhecidas
 
 - **`filmes` não filtra por Fortaleza** — mostra filmes nacionais em cartaz. Alguns podem não ter sessões em Fortaleza; nesse caso `sessoes` informa.
-- **`session.price` na saída padrão** pode ser o preço de SuperSeat (recliner) quando a sala tem assentos premium — UCI Iguatemi é o caso conhecido. Use `--precos` para ver o breakdown real.
-- **Sessões de hoje** às vezes retornam vazio se o horário já passou — o script avança automaticamente para a próxima data disponível.
+- **`session.price` na saída padrão** pode ser o preço de SuperSeat quando a sala tem recliners — UCI Iguatemi é o caso conhecido. Use `--precos` ou `GET /tickets` para o breakdown real.
+- **Sessões de hoje** às vezes retornam vazio se o horário já passou — o projeto avança automaticamente para a próxima data disponível.
 
 ---
 
 ## Melhorias futuras
 
 - [ ] Comando `cinemas` para listar os 10 cinemas de Fortaleza com endereço e salas
-- [ ] Flag `--formato IMAX` para filtrar sessões por tipo
+- [ ] Flag `--formato` para filtrar sessões por tipo (IMAX, VIP, etc.)
 - [ ] Flag `--menor-preco` para ordenar por preço
 - [ ] Tracking de ocupação para sessões consultadas (SQLite, ver `DATA_STRATEGY.md`)
 - [ ] Suporte a outras cidades via `--cidade` (a API já suporta, é só trocar o `cityId`)
