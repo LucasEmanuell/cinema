@@ -1,0 +1,178 @@
+[
+  {
+    "id": "2145",
+    "title": "Terno",
+    "originalTitle": "",
+    "type": "Filme",
+    "movieIdUrl": "",
+    "ancineId": "",
+    "countryOrigin": "",
+    "priority": 3200,
+    "contentRating": "Livre",
+    "duration": "",
+    "rating": 0.0,
+    "synopsis": "A um dia do casamento de Marcelo, o alfaiate, o noivo e seu pai terão de consertar mais do que as medidas de um terno. Pai e filho precisam ajustar as diferenças que os mantiveram afastados durante toda uma vida.",
+    "cast": "ÊNIO GONÇALVES, \r\nWALTER BREDA, \r\nANDRÉ GUERREIRO LOPES, \r\nHELENA IGNEZ\t",
+    "director": "GABRIELA AMARAL ALMEIDA, \r\nLUANA DEMANGE",
+    "directors": "GABRIELA AMARAL ALMEIDA, \r\nLUANA DEMANGE",
+    "imageFeatured": "https://ingresso-a.akamaihd.net/img/cinema/cartaz/2145-destaque.jpg",
+    "distributor": "",
+    "inPreSale": false,
+    "isReexhibition": false,
+    "isComingSoon": false,
+    "urlKey": "terno",
+    "isPlaying": false,
+    "countIsPlaying": 0,
+    "premiereDate": null,
+    "creationDate": "2013-09-12T11:48:00Z",
+    "city": "Rio de Janeiro",
+    "siteURL": "https://www.ingresso.com/filme/terno?city=rio-de-janeiro&partnership=ingresso.com&ing_source=api&ing_medium=link-filme&ing_campaign=ingresso.com&ing_content=terno",
+    "nationalSiteURL": "https://www.ingresso.com/filme/terno?city=rio-de-janeiro&partnership=ingresso.com&ing_source=api&ing_medium=link-filme&ing_campaign=ingresso.com&ing_content=terno",
+    "images": [
+      {
+        "url": "https://ingresso-a.akamaihd.net/img/cinema/cartaz/2145-cartaz.jpg",
+        "type": "PosterPortrait"
+      },
+      {
+        "url": "https://ingresso-a.akamaihd.net/img/cinema/cartaz/2145-destaque.jpg",
+        "type": "PosterHorizontal"
+      }
+    ],
+    "genres": [],
+    "ratingDescriptors": [],
+    "accessibilityHubs": [],
+    "completeTags": [],
+    "tags": [],
+    "trailers": [],
+    "partnershipType": null,
+    "titleSeen": null,
+    "ratingDetails": {
+      "id": 3,
+      "name": "Livre",
+      "label": "L",
+      "displayName": "livre",
+      "description": "Não há inadequações.",
+      "color": "#00A651"
+    },
+    "b2BEventId": null,
+    "cities": []
+  },
+  {
+    "id": "2191",
+    "title": "Carioca era um rio",
+    "originalTitle": "",
+    "type": "Filme",
+    "movieIdUrl": "",
+    "ancineId": "",
+    "countryOrigin": "",
+    "priority": 3200,
+    "contentRating": "Livre",
+    "duration": "",
+    "rating": 0.0,
+    "synopsis": "Documentário sobre o rio que deu nome aos habitantes da cidade do Rio de Janeiro. Principal fonte de abastecimento de água por dois séculos, o Rio Carioca orientou o crescimento dessa capital, mas hoje é um grande canal de esgoto submerso que desagua na Baía da Guanabara. A história desse rio é a história do desenvolvimento urbano no Brasil.",
+    "cast": "",
+    "director": "SIMPLÍCIO NETO",
+    "directors": "SIMPLÍCIO NETO",
+    "imageFeatured": "https://ingresso-a.akamaihd.net/img/cinema/cartaz/2191-destaque.jpg",
+    "distributor": "",
+    "inPreSale": false,
+    "isReexhibition": false,
+    "isComingSoon": false,
+    "urlKey": "carioca-era-um-rio",
+    "isPlaying": false,
+    "countIsPlaying": 0,
+    "premiereDate": null,
+    "creationDate": "2013-09-12T11:48:00Z",
+    "city": "Rio de Janeiro",
+    "siteURL": "https://www.ingresso.com/filme/carioca-era-um-rio?city=rio-de-janeiro&partnership=ingresso.com&ing_source=api&ing_medium=link-filme&ing_campaign=ingresso.com&ing_content=carioca-era-um-rio",
+    "nationalSiteURL": "https://www.ingresso.com/filme/carioca-era-um-rio?city=rio-de-janeiro&partnership=ingresso.com&ing_source=api&ing_medium=link-filme&ing_campaign=ingresso.com&ing_content=carioca-era-um-rio",
+    "images": [
+      {
+        "url": "https://ingresso-a.akamaihd.net/img/cinema/cartaz/2191-cartaz.jpg",
+        "type": "PosterPortrait"
+      },
+      {
+        "url": "https://ingresso-a.akamaihd.net/img/cinema/cartaz/2191-destaque.jpg",
+        "type": "PosterHorizontal"
+      }
+    ],
+    "genres": [],
+    "ratingDescriptors": [],
+    "accessibilityHubs": [],
+    "completeTags": [],
+    "tags": [],
+    "trailers": [],
+    "partnershipType": null,
+    "titleSeen": null,
+    "ratingDetails": {
+      "id": 3,
+      "name": "Livre",
+      "label": "L",
+      "displayName": "livre",
+      "description": "Não há inadequações.",
+      "color": "#00A651"
+    },
+    "b2BEventId": null,
+    "cities": []
+  },
+  {
+    "id": "22345",
+    "title": "Cantando Com Bohemian Rhapsody",
+    "originalTitle": "Cantando Com Bohemian Rhapsody",
+    "type": "Filme",
+    "movieIdUrl": "",
+    "ancineId": "E1800251900000",
+    "countryOrigin": "EUA",
+    "priority": 89,
+    "contentRating": "14 anos",
+    "duration": "132",
+    "rating": 0.0,
+    "synopsis": "Venha cantar os maiores sucessos da banda Queen! Exclusivo na Cinemark. Cinebiografia sobre o vocalista da banda Queen, Freddie Mercury (Rami Malek), que nasceu na Tanzânia e se mudou para a Inglaterra durante a adolescência.",
+    "cast": "",
+    "director": "",
+    "directors": "",
+    "imageFeatured": "https://ingresso-a.akamaihd.net/img/cinema/cartaz/22345-destaque.jpg",
+    "distributor": "20th Century Fox",
+    "inPreSale": false,
+    "isReexhibition": false,
+    "isComingSoon": false,
+    "urlKey": "cantando-com-bohemian-rhapsody",
+    "isPlaying": false,
+    "countIsPlaying": 0,
+    "premiereDate": null,
+    "creationDate": "0001-01-01T00:00:00Z",
+    "city": "Rio de Janeiro",
+    "siteURL": "https://www.ingresso.com/filme/cantando-com-bohemian-rhapsody?city=rio-de-janeiro&partnership=ingresso.com&ing_source=api&ing_medium=link-filme&ing_campaign=ingresso.com&ing_content=cantando-com-bohemian-rhapsody",
+    "nationalSiteURL": "https://www.ingresso.com/filme/cantando-com-bohemian-rhapsody?city=rio-de-janeiro&partnership=ingresso.com&ing_source=api&ing_medium=link-filme&ing_campaign=ingresso.com&ing_content=cantando-com-bohemian-rhapsody",
+    "images": [
+      {
+        "url": "https://ingresso-a.akamaihd.net/img/cinema/cartaz/22345-cartaz.jpg",
+        "type": "PosterPortrait"
+      },
+      {
+        "url": "https://ingresso-a.akamaihd.net/img/cinema/cartaz/22345-destaque.jpg",
+        "type": "PosterHorizontal"
+      }
+    ],
+    "genres": [
+      "Musical"
+    ],
+    "ratingDescriptors": [],
+    "accessibilityHubs": [],
+    "completeTags": [],
+    "tags": [],
+    "trailers": [],
+    "partnershipType": null,
+    "titleSeen": null,
+    "ratingDetails": {
+      "id": 2,
+      "name": "14 anos",
+      "label": "14",
+      "displayName": "14 anos",
+      "description": "Atos Criminosos, Conteúdo Sexual, Linguagem Imprópria, Temas Sensíveis, Violência, Estigma ou Preconceito.",
+      "color": "#F58220"
+    },
+    "b2BEventId": null,
+    "cities": []
+  }
+]

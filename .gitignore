@@ -8,6 +8,7 @@ venv/
 # Cache
 ~/.cache/cinema-fortaleza/
 *.json
+!tests/fixtures/*.json
 
 # Claude
 .claude/

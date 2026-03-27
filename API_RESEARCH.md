@@ -16,6 +16,29 @@ All content requests require `?partnership=ingresso.com` (or another valid partn
 
 ## Confirmed Endpoints
 
+### 0. States & Cities
+
+```
+GET https://api-content.ingresso.com/v0/states?partnership=ingresso.com
+```
+
+**Response:** Array of 27 state objects, each with a `cities[]` array.
+
+```json
+[{
+  "name": "Ceará",
+  "uf": "CE",
+  "cities": [
+    { "id": "36", "name": "Fortaleza", "urlKey": "fortaleza", "uf": "CE", "state": "Ceará" },
+    ...
+  ]
+}]
+```
+
+~195 cities total across Brazil. Cached 24h. This is how the app resolves `--cidade` arguments to a `cityId`.
+
+---
+
 ### 1. Theaters
 
 ```
@@ -35,7 +58,7 @@ GET https://api-content.ingresso.com/v0/theaters/url-key/{urlKey}/partnership/in
 - `deliveryType[]` → e.g. `["Bilheteria/ATM", "Aplicativo/Scannerless"]`
 - `enabled`, `blockMessage`
 
-**Note:** There are ~441 theaters in SP alone. No separate `/cities` endpoint — extract cities from `/theaters`.
+**Note:** There are ~441 theaters in SP alone.
 
 ---
 
@@ -236,7 +259,7 @@ occupancy_pct = (occupied / total) * 100
 ## Data Flow for App
 
 ```
-1. List cities → GET /v0/theaters → extract unique cityId/cityName/uf
+1. List cities → GET /v0/states?partnership=ingresso.com → 27 states + ~195 cities
 2. Pick city → GET /v0/events?cityId=X&isPlaying=true → movie list
 3. Pick movie → GET /v0/sessions/city/X/event/Y/dates/partnership/ingresso.com → available dates
 4. Pick date → GET /v0/sessions/city/X/event/Y/partnership/ingresso.com/groupBy/sessionType?date=D → sessions by theater

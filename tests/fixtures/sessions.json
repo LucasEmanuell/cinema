@@ -1,0 +1,174 @@
+[
+  {
+    "date": "2026-04-01",
+    "dateFormatted": "01/04",
+    "dayOfWeek": "quarta-feira",
+    "isToday": false,
+    "theaters": [
+      {
+        "id": "413",
+        "boxOfficeId": "9005",
+        "name": "Cine Araújo Campo Limpo",
+        "address": "Estrada de campo limpo",
+        "addressComplement": "",
+        "number": "459",
+        "urlKey": "cine-araujo-campo-limpo",
+        "neighborhood": "Santo Amaro",
+        "properties": {
+          "hasBomboniere": true,
+          "hasContactlessWithdrawal": true,
+          "hasSession": true,
+          "hasSeatDistancePolicy": false,
+          "hasSeatDistancePolicyArena": false
+        },
+        "functionalities": {
+          "operationPolicyEnabled": true
+        },
+        "deliveryType": [
+          "Bilheteria/ATM",
+          "Aplicativo/Scannerless"
+        ],
+        "siteURL": "https://www.ingresso.com/cinema/cine-araujo-campo-limpo?city=sao-paulo&partnership=ingresso.com&ing_source=api&ing_medium=link-cinema&ing_campaign=ingresso.com&ing_content=cine-araujo-campo-limpo",
+        "nationalSiteURL": "https://www.ingresso.com/cinema/cine-araujo-campo-limpo?city=sao-paulo&partnership=ingresso.com&ing_source=api&ing_medium=link-cinema&ing_campaign=ingresso.com&ing_content=cine-araujo-campo-limpo",
+        "enabled": true,
+        "blockMessage": "",
+        "rooms": null,
+        "sessionTypes": [
+          {
+            "type": [
+              "Laser",
+              "Dublado"
+            ],
+            "sessions": [
+              {
+                "id": "84283462",
+                "boxOfficeId": "bb2ffe47-45ef-4b65-8a72-de0c6cbed79b",
+                "eventBoxOfficeId": "6540",
+                "price": 46.6,
+                "room": "Sala 3 - LASER",
+                "type": [
+                  "Laser",
+                  "Dublado"
+                ],
+                "types": [
+                  {
+                    "id": 1073741824,
+                    "name": "Laser",
+                    "alias": "Laser",
+                    "display": true,
+                    "typeDescriptions": {
+                      "detailedImage": "https://ingresso-a.akamaihd.net/prd/img/sessiontype/"
+                    }
+                  },
+                  {
+                    "id": 0,
+                    "name": "Dublado",
+                    "alias": "DUB",
+                    "display": true,
+                    "typeDescriptions": {
+                      "detailedImage": "https://ingresso-a.akamaihd.net/prd/img/copytype/"
+                    }
+                  }
+                ],
+                "date": {
+                  "localDate": "2026-04-01T16:10:00-03:00",
+                  "isToday": false,
+                  "dayOfWeek": "quarta-feira",
+                  "dayAndMonth": "01/04",
+                  "hour": "16:10",
+                  "year": "2026"
+                },
+                "realDate": {
+                  "localDate": "2026-04-01T16:10:00-03:00",
+                  "isToday": false,
+                  "dayOfWeek": "quarta-feira",
+                  "dayAndMonth": "01/04",
+                  "hour": "16:10",
+                  "year": "2026"
+                },
+                "time": "16:10",
+                "defaultSector": "4583484",
+                "midnightMessage": null,
+                "siteURL": "https://checkout.ingresso.com/?sessionId=84283462&partnership=ingresso.com&ing_source=api&ing_medium=link-checkout&ing_campaign=ingresso.com&ing_content=super-mario-galaxy-o-filme",
+                "nationalSiteURL": null,
+                "appCheckoutUrl": "",
+                "hasSeatSelection": true,
+                "driveIn": false,
+                "streaming": false,
+                "isNewCheckout": true,
+                "maxTicketsPerCar": 0,
+                "enabled": true,
+                "blockMessage": ""
+              },
+              {
+                "id": "84283305",
+                "boxOfficeId": "a28729c0-4853-448e-98e1-abfa01722987",
+                "eventBoxOfficeId": "6540",
+                "price": 46.6,
+                "room": "Sala 3 - LASER",
+                "type": [
+                  "Laser",
+                  "Dublado"
+                ],
+                "types": [
+                  {
+                    "id": 1073741824,
+                    "name": "Laser",
+                    "alias": "Laser",
+                    "display": true,
+                    "typeDescriptions": {
+                      "detailedImage": "https://ingresso-a.akamaihd.net/prd/img/sessiontype/"
+                    }
+                  },
+                  {
+                    "id": 0,
+                    "name": "Dublado",
+                    "alias": "DUB",
+                    "display": true,
+                    "typeDescriptions": {
+                      "detailedImage": "https://ingresso-a.akamaihd.net/prd/img/copytype/"
+                    }
+                  }
+                ],
+                "date": {
+                  "localDate": "2026-04-01T18:20:00-03:00",
+                  "isToday": false,
+                  "dayOfWeek": "quarta-feira",
+                  "dayAndMonth": "01/04",
+                  "hour": "18:20",
+                  "year": "2026"
+                },
+                "realDate": {
+                  "localDate": "2026-04-01T18:20:00-03:00",
+                  "isToday": false,
+                  "dayOfWeek": "quarta-feira",
+                  "dayAndMonth": "01/04",
+                  "hour": "18:20",
+                  "year": "2026"
+                },
+                "time": "18:20",
+                "defaultSector": "4583484",
+                "midnightMessage": null,
+                "siteURL": "https://checkout.ingresso.com/?sessionId=84283305&partnership=ingresso.com&ing_source=api&ing_medium=link-checkout&ing_campaign=ingresso.com&ing_content=super-mario-galaxy-o-filme",
+                "nationalSiteURL": null,
+                "appCheckoutUrl": "",
+                "hasSeatSelection": true,
+                "driveIn": false,
+                "streaming": false,
+                "isNewCheckout": true,
+                "maxTicketsPerCar": 0,
+                "enabled": true,
+                "blockMessage": ""
+              }
+            ]
+          }
+        ],
+        "geolocation": {
+          "lat": -23.64966,
+          "lng": -46.75746
+        },
+        "operationPolicies": []
+      }
+    ]
+  }
+]

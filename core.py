@@ -32,6 +32,66 @@ class APIError(Exception):
     pass
 
 
+# ── Schema validation ─────────────────────────────────────────────────────────
+#
+# When ingresso.com changes their response format, fields we rely on may
+# disappear silently — causing confusing KeyErrors or empty output instead of
+# a clear error message.
+#
+# check_schema() is called after every live API response (cache hits are
+# skipped — the format was already validated when the response was stored).
+# If required fields are missing it writes a warning to:
+#   ~/.cache/cinema-fortaleza/schema_warnings.log
+#
+# The app continues to work normally; the log is the notification.
+
+# Required top-level fields per response type.
+# For list responses the check is applied to the first item in the list.
+_SCHEMAS: dict[str, set[str]] = {
+    "movies":   {"id", "title", "urlKey", "isPlaying"},
+    "sessions": {"date", "theaters"},
+    "tickets":  {"default"},
+    "seats":    {"totalSeats", "lines", "labels", "stage"},
+    "states":   {"name", "uf", "cities"},
+}
+
+
+def _warn_schema(name: str, missing: set[str], sample: dict) -> None:
+    """Append a schema-change warning to the log file."""
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    log_path = CACHE_DIR / "schema_warnings.log"
+    ts    = time.strftime("%Y-%m-%d %H:%M:%S")
+    got   = sorted(sample.keys()) if isinstance(sample, dict) else type(sample).__name__
+    entry = (
+        f"[{ts}] SCHEMA WARNING — {name}\n"
+        f"  Missing fields : {sorted(missing)}\n"
+        f"  Fields present : {got}\n"
+        f"  Action needed  : the ingresso.com API response format may have changed.\n"
+        f"                   Review core.py and update _SCHEMAS if the field was\n"
+        f"                   renamed, or update the code that reads it.\n\n"
+    )
+    with log_path.open("a") as f:
+        f.write(entry)
+
+
+def check_schema(data, name: str) -> None:
+    """
+    Validate that an API response still contains the expected fields.
+
+    Called after every live fetch (not on cache hits). Silent on success.
+    Writes to schema_warnings.log and returns normally on failure — the app
+    keeps running so users are not blocked while the issue is investigated.
+    """
+    if not data or name not in _SCHEMAS:
+        return
+    sample = data[0] if isinstance(data, list) else data
+    if not isinstance(sample, dict):
+        return
+    missing = _SCHEMAS[name] - sample.keys()
+    if missing:
+        _warn_schema(name, missing, sample)
+
+
 # ── Cache ─────────────────────────────────────────────────────────────────────
 
 def _cache_path(key: str) -> Path:
@@ -57,11 +117,19 @@ def cache_set(key: str, value, ttl: int):
 
 # ── HTTP ──────────────────────────────────────────────────────────────────────
 
-def fetch(url: str, params: dict = None, cache_key: str = None, ttl: int = 300):
+def fetch(url: str, params: dict = None, cache_key: str = None, ttl: int = 300,
+          schema: str = None):
+    """
+    Fetch a URL with optional caching.
+
+    schema: if provided and this is a live (non-cached) response, the result
+            is validated against _SCHEMAS[schema]. Warnings are logged to
+            ~/.cache/cinema-fortaleza/schema_warnings.log.
+    """
     if cache_key:
         hit = cache_get(cache_key)
         if hit is not None:
-            return hit
+            return hit  # cache hit — format was validated when stored
 
     try:
         r = requests.get(url, params=params, timeout=10,
@@ -75,6 +143,8 @@ def fetch(url: str, params: dict = None, cache_key: str = None, ttl: int = 300):
         return None
 
     data = r.json()
+    if schema:
+        check_schema(data, schema)   # validate before caching
     if cache_key:
         cache_set(cache_key, data, ttl)
     return data
@@ -87,6 +157,7 @@ def api_movies(city_id: int = CITY_ID):
         params={"partnership": PARTNERSHIP, "cityId": city_id, "isPlaying": "true"},
         cache_key=f"movies_{city_id}",
         ttl=TTL["movies"],
+        schema="movies",
     )
     if not data:
         return []
@@ -108,6 +179,7 @@ def api_sessions(movie_id: str, date_str: str, city_id: int = CITY_ID):
         params={"date": date_str},
         cache_key=f"sessions_{movie_id}_{city_id}_{date_str}",
         ttl=TTL["sessions"],
+        schema="sessions",
     )
     return data[0] if data else None
 
@@ -116,6 +188,7 @@ def api_tickets(session_id: str, section_id: str):
         f"{CHECKOUT_API}/sessions/{session_id}/sections/{section_id}/tickets",
         cache_key=f"tickets_{session_id}_{section_id}",
         ttl=TTL["tickets"],
+        schema="tickets",
     )
 
 def api_seats(session_id: str, section_id: str):
@@ -123,16 +196,19 @@ def api_seats(session_id: str, section_id: str):
         f"{CHECKOUT_API}/sessions/{session_id}/sections/{section_id}/seats",
         cache_key=f"seats_{session_id}_{section_id}",
         ttl=TTL["seats"],
+        schema="seats",
     )
 
 def api_states():
     """All Brazilian states and their cities."""
-    return fetch(
+    data = fetch(
         f"{CONTENT_API}/states",
         params={"partnership": PARTNERSHIP},
         cache_key="states",
         ttl=TTL["cities"],
+        schema="states",
     ) or []
+    return data
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

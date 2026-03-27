@@ -1,0 +1,11 @@
+# Runtime
+requests
+rich
+fastapi
+uvicorn
+
+# Testing
+pytest
+pytest-mock
+freezegun
+httpx

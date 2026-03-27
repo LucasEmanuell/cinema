@@ -7,7 +7,7 @@ Funciona como **CLI** e como **API web** (para frontends).
 ## Instalação
 
 ```bash
-pip install requests rich fastapi uvicorn
+pip install -r requirements.txt
 ```
 
 ## Estrutura do projeto
@@ -20,7 +20,6 @@ cinema/
 ├── cinema.py        ← entrypoint do CLI (8 linhas, chama cli.py)
 ├── README.md        ← este arquivo
 ├── API_RESEARCH.md  ← documentação completa dos endpoints da ingresso.com
-├── APP_DESIGN.md    ← decisões de arquitetura e features planejadas
 └── DATA_STRATEGY.md ← análise sobre o que vale armazenar e como
 ```
 
@@ -243,6 +242,45 @@ A taxa de serviço da ingresso.com é **sempre 14% do preço da Inteira**, aplic
 Para quem paga meia (estudantes, idosos, PCD), a taxa online equivale ao próprio desconto. O CLI avisa e a API inclui o campo `meia_fee_warning: true`.
 
 **Exceção:** UCI tem tickets "UNIQUE MEIA ENTRADA" com taxa proporcional de 14%. Nesses casos nenhum aviso é emitido.
+
+---
+
+## Testes
+
+```bash
+pip install -r requirements.txt
+python3 -m pytest -v
+```
+
+81 testes, nenhuma chamada de rede — tudo é executado com fixtures salvas em `tests/fixtures/`.
+
+### Estrutura
+
+```
+tests/
+├── conftest.py          ← fixtures compartilhadas (carrega os JSONs)
+├── test_core.py         ← testa helpers e cache (44 testes)
+├── test_app.py          ← testa rotas FastAPI (29 testes)
+└── fixtures/
+    ├── movies.json      ← 3 filmes reais do cityId=36
+    ├── sessions.json    ← 1 cinema, 1 sessionType, 2 sessões
+    ├── tickets.json     ← preços da sessão 84283462 / seção 4583484
+    ├── seats.json       ← mapa completo de assentos (398 assentos)
+    └── states.json      ← 27 estados + ~195 cidades do Brasil
+```
+
+### O que é testado
+
+| Módulo | O que cobre |
+|---|---|
+| `test_core.py` | `normalize`, `find_movie`, `resolve_date`, `find_city`, `resolve_city`, `parse_tickets`, `check_schema` (log de mudanças de formato), cache (hit/miss/expirado) |
+| `test_app.py` | Todos os 6 endpoints, status codes (200/404/503), filtros `?teatro=` `?hora=` `?cidade=`, `meia_fee_warning`, cálculo de ocupação, auto-advance de data |
+
+### O que não é testado (intencionalmente)
+
+- `fetch()` — só encapsula `requests`, sem lógica própria
+- `render_seat_map()` — saída visual, não há assertions significativas
+- CLI (`cli.py`) — testado manualmente; automatizar requer captura de output rich
 
 ---
 

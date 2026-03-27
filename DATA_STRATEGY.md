@@ -69,23 +69,25 @@ For comparison, **national scale** would be ~48,000 sessions/day → 400 req/min
 
 ## Recommended Storage Strategy
 
-### Option A: Query-first cache (recommended for v1)
+### Option A: Query-first cache ✅ **Implemented**
 
 > Store nothing proactively. Cache API responses when the user actually queries something.
 
 **How it works:**
 1. User queries a movie → cache the session list for 15 min
 2. User views a specific session → cache the seat map for 5 min
-3. SQLite as the cache backend (simple key-value with TTL)
+3. JSON files as the cache backend (one file per cache key, stored in `~/.cache/cinema-fortaleza/`)
 
-**Pros:** Zero storage waste, zero background requests, works offline for repeated queries
+**Pros:** Zero storage waste, zero background requests, works offline for repeated queries, shared between CLI and web API
 **Cons:** No historical data, no patterns over time
 
 ```
-cache/
-├── theaters.db       (SQLite, TTL: 7 days)
-├── sessions.db       (SQLite, TTL: 15 min)
-└── seats.db          (SQLite, TTL: 5 min)
+~/.cache/cinema-fortaleza/
+├── movies_36.json        (TTL: 1h)
+├── sessions_<id>_*.json  (TTL: 15min)
+├── seats_*.json          (TTL: 5min)
+├── states.json           (TTL: 24h)
+└── schema_warnings.log   (append-only, written when API format changes)
 ```
 
 ---
