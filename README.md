@@ -172,14 +172,14 @@ uvicorn app:app --reload
 Abra `http://localhost:8000` — o FastAPI serve o frontend automaticamente.
 
 Features:
-- Seletor de estado + cidade (cascata, qualquer cidade do Brasil; padrão: Fortaleza)
-- Grid de filmes realmente em cartaz na cidade selecionada
-- Chip "Pré-venda" para filmes com ingressos à venda mas ainda não exibidos
-- Aba de datas disponíveis para cada filme
-- Lista de cinemas com sessões agrupadas por tipo (Laser, IMAX, Dublado…)
-- Filtro de cinema por nome
-- Preço por sessão com taxa de serviço separada
-- Tema escuro
+- Seletor de estado + cidade (qualquer cidade do Brasil); a última escolha fica salva
+- Grid de filmes com pôster, busca (`/` foca o campo) e filtro em cartaz / pré-venda
+- **Assentos livres direto na lista de sessões** (barra + "N livres", carregados em lote)
+- **Painel da sessão** ao clicar: assentos livres, mapa da sala, preços (inteira/meia) e aviso da taxa da meia
+- Filtros por data, cinema, tipo (Dublado, 3D, IMAX…) e período; "próxima sessão" destacada; sessões já iniciadas ocultas
+- URLs compartilháveis (`#c=Fortaleza&f=<filme>&d=<data>&s=<sessão>:<seção>`) e botão voltar funcionando
+- Rápido: lista de filmes pinta do `localStorage` e revalida; prefetch ao passar o mouse; Vue local (sem CDN)
+- Tema escuro, navegação por teclado, `prefers-reduced-motion`
 
 ## API web
 
@@ -196,7 +196,8 @@ A API compartilha o mesmo cache do CLI (`~/.cache/cinema-fortaleza/`), então re
 | `GET` | `/sessoes/{filme}` | Sessões de um filme (aceita `?cidade=`, `?data=`, `?teatro=`, `?hora=`) |
 | `GET` | `/sessoes/{filme}/datas` | Datas disponíveis para um filme (aceita `?cidade=`) |
 | `GET` | `/tickets/{session_id}/{section_id}` | Preços com taxa de serviço separada |
-| `GET` | `/assentos/{session_id}/{section_id}` | Mapa de assentos completo |
+| `GET` | `/assentos/{session_id}/{section_id}` | Mapa de assentos completo (`?atualizar=1` ignora o cache) |
+| `GET` | `/ocupacao?s=sessão:seção&s=…` | Só os totais de ocupação de várias sessões, em paralelo (máx. 80) |
 
 
 O parâmetro `filme` e `cidade` aceitam texto parcial sem acento, igual ao CLI. Cidade padrão: Fortaleza.
@@ -227,7 +228,12 @@ Todas as requisições usam `?partnership=ingresso.com`. Sem autenticação para
 
 ### Cache local
 
-Respostas salvas em `~/.cache/cinema-fortaleza/` como JSON com TTL. Compartilhado entre CLI e API.
+Duas camadas: memória do processo (sem disco/JSON em cache hit) e arquivos JSON em `~/.cache/cinema-fortaleza/` (gravação atômica; compartilhado entre CLI e API).
+
+- **Stale-while-revalidate:** entrada vencida ainda é servida na hora enquanto uma thread atualiza em background (catálogo, sessões, datas, cinemas, cidades). Também serve de fallback se o ingresso.com cair.
+- **Sem requisições duplicadas:** pedidos simultâneos para a mesma chave fria compartilham um único fetch.
+- **Erro ≠ vazio:** 204/404 viram "sem dados" (lembrado por 2 min); 5xx/429/rede levantam `APIError` e nunca são cacheados.
+- Em cidades com mais de 40 cinemas o scan é amostrado; os filmes não encontrados nele são checados via `/dates`.
 
 | Dado | TTL | Motivo |
 |---|---|---|
@@ -237,7 +243,7 @@ Respostas salvas em `~/.cache/cinema-fortaleza/` como JSON com TTL. Compartilhad
 | Lista de cinemas | 1 hora | Estável |
 | Sessões / programação | 15 min | Estável após ser publicada |
 | Preços (tickets) | 1 hora | Raramente muda durante o dia |
-| Mapa de assentos | 5 min | Muda conforme ingressos são vendidos |
+| Mapa de assentos | 45 s | Muda conforme ingressos são vendidos (o painel tem "Atualizar") |
 
 ### Fluxo de dados
 
