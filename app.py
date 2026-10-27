@@ -9,35 +9,77 @@ Endpoints:
   GET /sessoes/{filme}?data=&teatro=&hora=
   GET /sessoes/{filme}/datas
   GET /tickets/{session_id}/{section_id}
-  GET /assentos/{session_id}/{section_id}
+  GET /assentos/{session_id}/{section_id}?atualizar=1
+  GET /ocupacao?s={session_id}:{section_id}&s=…
 """
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 _STATIC = Path(__file__).parent / "static"
 
 from core import (
-    APIError,
+    APIError, CITY_ID,
     api_movies, api_movies_in_city, api_session_dates, api_sessions,
     api_tickets, api_seats, api_states, find_movie, normalize,
     resolve_date, resolve_city, parse_tickets,
 )
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Warm the city-movie cache for the default city so the first web request is fast.
+    threading.Thread(target=api_movies_in_city, args=(CITY_ID,), daemon=True).start()
+    yield
+
+
 app = FastAPI(
     title="Cinema Fortaleza API",
     description="Sessões, preços e mapas de assentos dos cinemas de Fortaleza via ingresso.com",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["GET"],
     allow_headers=["*"],
 )
+
+
+# Browser cache lifetimes per route prefix (seconds). Short on purpose: the
+# server cache is the source of truth, this just absorbs repeat clicks.
+_CACHE_CONTROL = {
+    "/cidades":  "public, max-age=3600",
+    "/filmes":   "public, max-age=60, stale-while-revalidate=300",
+    "/sessoes":  "public, max-age=60, stale-while-revalidate=300",
+    "/tickets":  "public, max-age=300",
+    "/assentos": "public, max-age=20",
+    "/ocupacao": "public, max-age=20",
+    "/static":   "public, max-age=31536000, immutable",
+}
+
+
+@app.middleware("http")
+async def cache_headers(request: Request, call_next):
+    response = await call_next(request)
+    if request.method == "GET" and response.status_code == 200 \
+            and "cache-control" not in response.headers:
+        path = request.url.path
+        for prefix, value in _CACHE_CONTROL.items():
+            if path.startswith(prefix):
+                response.headers["Cache-Control"] = value
+                break
+    return response
 
 
 def _api_error(e: APIError):
@@ -52,10 +94,13 @@ def _resolve_city(cidade: str | None) -> tuple[int, str]:
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
+app.mount("/static", StaticFiles(directory=_STATIC), name="static")
+
+
 @app.get("/", include_in_schema=False)
 def serve_frontend():
     """Serve the Vue SPA."""
-    return FileResponse(_STATIC / "index.html")
+    return FileResponse(_STATIC / "index.html", headers={"Cache-Control": "no-cache"})
 
 
 @app.get("/cidades", summary="Lista todas as cidades disponíveis")
@@ -170,12 +215,14 @@ def get_sessoes(
 
     hora_q = hora.replace("h", ":").strip() if hora else None
     if hora_q:
-        for t in theaters:
-            for st in t.get("sessionTypes", []):
-                st["sessions"] = [
-                    s for s in st["sessions"]
-                    if s.get("time", "").startswith(hora_q)
-                ]
+        # Build new dicts: the theaters come from a cache shared across requests.
+        theaters = [
+            {**t, "sessionTypes": [
+                {**st, "sessions": [s for s in st["sessions"] if s.get("time", "").startswith(hora_q)]}
+                for st in t.get("sessionTypes", [])
+            ]}
+            for t in theaters
+        ]
 
     return {
         "movie":         {"id": movie["id"], "title": movie["title"], "urlKey": movie.get("urlKey")},
@@ -217,39 +264,74 @@ def get_tickets(session_id: str, section_id: str):
     }
 
 
+def _occupancy(data: dict) -> dict:
+    total = data.get("totalSeats", 0)
+    avail = sum(
+        1 for ln in data.get("lines", [])
+        for s in ln.get("seats", [])
+        if s.get("status") == "Available"
+    )
+    return {
+        "totalSeats":     total,
+        "availableSeats": avail,
+        "occupiedSeats":  total - avail,
+        "occupancyPct":   round((total - avail) / total * 100, 1) if total else 0,
+    }
+
+
 @app.get("/assentos/{session_id}/{section_id}", summary="Mapa de assentos de uma sessão")
-def get_assentos(session_id: str, section_id: str):
+def get_assentos(
+    session_id: str,
+    section_id: str,
+    atualizar:  bool = Query(False, description="Ignora o cache e busca a ocupação agora"),
+):
     """
     Retorna o mapa de assentos completo: geometria da sala, status de cada assento
     (Available / Unavailable), tipo (Regular, SuperSeat, Couple…) e posição (linha/coluna).
     """
     try:
-        data = api_seats(session_id, section_id)
+        data = api_seats(session_id, section_id, force=atualizar)
     except APIError as e:
         _api_error(e)
 
     if not data:
         raise HTTPException(status_code=404, detail="Sessão ou seção não encontrada")
 
-    lines = data.get("lines", [])
-    total = data.get("totalSeats", 0)
-    avail = sum(
-        1 for ln in lines
-        for s in ln.get("seats", [])
-        if s.get("status") == "Available"
-    )
-
-    return {
-        "session_id":        session_id,
-        "section_id":        section_id,
-        "theaterName":       data.get("theaterName"),
-        "roomName":          data.get("theaterLocationName"),
-        "totalSeats":        total,
-        "availableSeats":    avail,
-        "occupiedSeats":     total - avail,
-        "occupancyPct":      round((total - avail) / total * 100, 1) if total else 0,
+    response = {
+        "session_id":         session_id,
+        "section_id":         section_id,
+        "theaterName":        data.get("theaterName"),
+        "roomName":           data.get("theaterLocationName"),
+        **_occupancy(data),
         "activeReservations": data.get("activeReservations", 0),
-        "stage":             data.get("stage"),
-        "labels":            data.get("labels"),
-        "lines":             lines,
+        "bounds":             data.get("bounds"),
+        "stage":              data.get("stage"),
+        "labels":             data.get("labels"),
+        "lines":              data.get("lines", []),
     }
+    return JSONResponse(response, headers={"Cache-Control": "no-cache"} if atualizar else None)
+
+
+@app.get("/ocupacao", summary="Ocupação de várias sessões de uma vez")
+def get_ocupacao(s: list[str] = Query(..., description="session_id:section_id (repetível, máx. 80)")):
+    """
+    Versão leve de /assentos para listas: só os totais, sem o mapa, e buscando
+    as sessões em paralelo. Sessões que falharem voltam como `null`.
+    """
+    pairs = []
+    for item in s[:80]:
+        sid, _, sec = item.partition(":")
+        if not sid or not sec:
+            raise HTTPException(status_code=422, detail=f"Formato inválido: {item!r} (use session:section)")
+        pairs.append((sid, sec))
+
+    def one(pair):
+        try:
+            data = api_seats(*pair)
+        except APIError:
+            return None
+        return _occupancy(data) if data else None
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(one, pairs))
+    return {f"{sid}:{sec}": r for (sid, sec), r in zip(pairs, results)}
