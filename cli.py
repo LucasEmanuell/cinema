@@ -19,9 +19,9 @@ from rich import box
 
 from core import (
     APIError,
-    api_movies, api_session_dates, api_sessions, api_tickets, api_seats,
-    api_theaters, api_states, find_movie, normalize, resolve_date, resolve_city,
-    parse_tickets,
+    api_movies, api_movies_in_city, api_session_dates, api_sessions,
+    api_tickets, api_seats, api_theaters, api_states,
+    find_movie, normalize, resolve_date, resolve_city, parse_tickets,
 )
 
 console = Console()
@@ -205,7 +205,7 @@ def cmd_filmes(args):
         return
 
     with console.status(f"[dim]Buscando filmes em cartaz em {city_name}...[/dim]"):
-        movies = api_movies(city_id)
+        movies = api_movies_in_city(city_id)
 
     if not movies:
         console.print("[red]Nenhum filme encontrado.[/red]")
@@ -228,9 +228,12 @@ def cmd_filmes(args):
         premiere     = m.get("premiereDate") or {}
         premiere_str = premiere.get("dayAndMonth", "—") if isinstance(premiere, dict) else "—"
         duration     = m.get("duration", "")
+        title        = m["title"]
+        if m.get("inPreSale"):
+            title = f"{title} [yellow](pré-venda)[/yellow]"
         table.add_row(
             str(i),
-            m["title"],
+            title,
             m.get("contentRating") or "—",
             f"{duration}min" if duration else "—",
             premiere_str,

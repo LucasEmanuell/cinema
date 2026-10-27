@@ -83,108 +83,43 @@ For comparison, **national scale** would be ~48,000 sessions/day → 400 req/min
 
 ```
 ~/.cache/cinema-fortaleza/
-├── movies_36.json        (TTL: 1h)
-├── sessions_<id>_*.json  (TTL: 15min)
-├── seats_*.json          (TTL: 5min)
-├── states.json           (TTL: 24h)
-└── schema_warnings.log   (append-only, written when API format changes)
+├── movies_<city_id>.json                       (TTL: 1h)
+├── theaters_<city_id>.json                     (TTL: 1h)
+├── theater_sessions_<tid>_<city>_<date>.json   (TTL: 15min)
+├── movie_ids_city_<city_id>_<date>.json        (TTL: 15min)
+├── sessions_<mid>_<city>_<date>.json           (TTL: 15min)
+├── tickets_<sid>_<secid>.json                  (TTL: 1h)
+├── seats_<sid>_<secid>.json                    (TTL: 5min)
+├── states.json                                 (TTL: 24h)
+└── schema_warnings.log                         (append-only, written when API format changes)
 ```
 
 ---
 
-### Option B: Track queried sessions (recommended for v1.5)
+### Option B: Track queried sessions
 
 > Like Option A, but when a user views a session, start tracking its occupancy in the background.
 
-**How it works:**
-1. User queries session 84283462 → save first occupancy snapshot
-2. Background job runs every 30 min → re-fetch and store new snapshot for all "watched" sessions
-3. User can see occupancy timeline: "this session was 40% full at 9am, 80% at 6pm"
+When a user queries session `84283462` → save first snapshot → background job polls every 30 min → user sees occupancy timeline.
 
-**Storage cost for Fortaleza:** If user "watches" 20 sessions/day × 12 snapshots × 365 days = 87,600 rows/year ≈ **9 MB/year** in SQLite. Trivial.
-
-**Schema:**
-```sql
-CREATE TABLE occupancy_snapshots (
-    session_id     TEXT NOT NULL,
-    section_id     TEXT NOT NULL,
-    fetched_at     DATETIME NOT NULL,
-    total_seats    INTEGER,
-    available      INTEGER,
-    occupied       INTEGER,
-    pct_full       REAL,
-    PRIMARY KEY (session_id, section_id, fetched_at)
-);
-
-CREATE TABLE price_history (
-    session_id     TEXT NOT NULL,
-    section_id     TEXT NOT NULL,
-    ticket_name    TEXT NOT NULL,
-    price          REAL,
-    service        REAL,
-    total          REAL,
-    observed_at    DATETIME NOT NULL,
-    PRIMARY KEY (session_id, section_id, ticket_name, observed_at)
-);
-```
+**Storage cost (Fortaleza):** 20 sessions/day × 12 snapshots × 365 days ≈ **9 MB/year** in SQLite. Trivial.
 
 ---
 
-### Option C: Proactive daily scrape (for v2 / national scale)
+### Option C: Proactive daily scrape
 
-> Every day at midnight, fetch all sessions for Fortaleza (or nationally) and store occupancy snapshots on a schedule.
+> Every day at midnight, fetch all sessions for Fortaleza and track occupancy on a schedule.
 
-**For Fortaleza only:**
-- Midnight: fetch all ~400 sessions for tomorrow
-- Every hour 10am–midnight: fetch seat maps for active sessions
-- Total: ~400 (schedule) + 400×14 (hourly) = 6,000 req/day = 4 req/min
-- Storage: ~170 MB/year in SQLite (very manageable)
-
-**For national:**
-- ~48,000 sessions/day nationally
-- Hourly tracking = ~400 req/min → possible but you're hitting their API hard
-- Storage: ~20 GB/year → need Postgres or TimescaleDB
-- **Probably not worth it unless you have a specific analytical goal**
+~6,000 req/day = 4 req/min. Storage: ~170 MB/year. Feasible for a single city; for national scale (~48,000 sessions/day) you'd need a proper job queue and Postgres.
 
 ---
 
-## Interesting Things You Can Do With Historical Data
+## With historical data (Options B/C) you could add
 
-If you go with Option B or C, here's what becomes possible:
-
-### 1. Occupancy prediction
-"Based on past 4 Saturdays, Interstellar 8pm at Cinépolis RioMar will be ~85% full by 6pm"
-
-### 2. Best time to buy
-"Sessions for blockbusters fill 60% in the first 2 hours of sale. Buy early."
-
-### 3. Price change detection
-"Centerplex Messejana dropped the Dolby Atmos session to R$ 35 on the day of showing (it was R$ 47)"
-
-### 4. Theater patterns
-"UCI Iguatemi sells out IMAX sessions 3 days before showtime on average"
-
-### 5. Weekly occupancy heatmap
-"Friday 9pm is always 90%+ full. Tuesday afternoon is almost never above 30%"
-
----
-
-## Recommendation for Your Case
-
-**Start with Option A** (query cache only):
-- Zero maintenance overhead
-- Fast responses for repeated queries
-- No background tasks, no scheduler
-
-**Move to Option B** (track queried sessions) after first version:
-- Add a SQLite `occupancy_snapshots` table
-- When user queries a session, spawn a background task to poll it every 30 min until showtime
-- ~0 cost in storage and requests for personal use
-
-**Fortaleza first, scalable later** — the architecture is the same either way:
-- `cityId` is just a parameter
-- Adding more cities = changing a config value
-- If going national, swap SQLite for Postgres + add a proper job queue (e.g. `rq` or `celery`)
+- Occupancy prediction based on past sessions at the same time/day
+- "Best time to buy" patterns (blockbusters fill fast in the first hours)
+- Price change detection
+- Weekly occupancy heatmap per theater
 
 ---
 
