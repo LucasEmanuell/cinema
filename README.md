@@ -2,7 +2,7 @@
 
 Sessões de cinema em qualquer cidade do Brasil — mais rápido que o app e o site.
 
-Funciona como **CLI** e como **API web** (para frontends).
+Funciona como **CLI**, como **API web** e como **frontend web** (servido pela própria API).
 
 ## Instalação
 
@@ -19,8 +19,11 @@ cinema/
 ├── app.py           ← API web (FastAPI) + serve o frontend
 ├── cinema.py        ← entrypoint do CLI (8 linhas, chama cli.py)
 ├── static/
-│   └── index.html   ← frontend Vue 3 (CDN, sem build step)
+│   ├── index.html                      ← frontend (Vue 3, sem build step)
+│   └── vue.3.5.13.esm-browser.prod.js  ← Vue fixo e local (sem CDN)
+├── tests/           ← suíte pytest (offline, fixtures em tests/fixtures/)
 ├── README.md        ← este arquivo
+├── DEPLOY.md        ← plano de deploy em VPS (ainda não executado)
 ├── API_RESEARCH.md  ← documentação completa dos endpoints da ingresso.com
 └── DATA_STRATEGY.md ← análise sobre o que vale armazenar e como
 ```
@@ -76,7 +79,7 @@ Lista os filmes realmente em cartaz na cidade indicada (com sessões reais hoje 
 python cinema.py sessoes "<título>"
 ```
 
-Busca por título parcial, sem acento e case-insensitive ("panico" encontra "Pânico 7"). Mostra todos os cinemas e sessões na cidade indicada.
+Busca por título tolerante: parcial, sem acento, case-insensitive, ignora hífens e ordem das palavras e perdoa erros de digitação ("panico" encontra "Pânico 7"; "cara de barro" encontra "Cara-De-Barro"; "street figther" encontra "Street Fighter"). Em caso de empate vence o filme com mais salas. Mostra todos os cinemas e sessões na cidade indicada.
 
 Sem `--data`, usa o dia de hoje. Se não houver sessões hoje (ex: tarde da noite), avança automaticamente para a próxima data disponível.
 
@@ -173,7 +176,7 @@ Abra `http://localhost:8000` — o FastAPI serve o frontend automaticamente.
 
 Features:
 - Seletor de estado + cidade (qualquer cidade do Brasil); a última escolha fica salva
-- Grid de filmes com pôster, busca (`/` foca o campo) e filtro em cartaz / pré-venda
+- Grid de filmes com pôster, busca tolerante a typos (`/` foca o campo; Enter abre o melhor resultado) e filtro em cartaz / pré-venda
 - **Assentos livres direto na lista de sessões** (barra + "N livres", carregados em lote)
 - **Painel da sessão** ao clicar: assentos livres, mapa da sala, preços (inteira/meia) e aviso da taxa da meia
 - Filtros por data, cinema, tipo (Dublado, 3D, IMAX…) e período; "próxima sessão" destacada; sessões já iniciadas ocultas
@@ -193,14 +196,16 @@ A API compartilha o mesmo cache do CLI (`~/.cache/cinema-fortaleza/`), então re
 |---|---|---|
 | `GET` | `/cidades` | Lista todos os estados e cidades disponíveis |
 | `GET` | `/filmes` | Filmes em cartaz (aceita `?cidade=`) |
-| `GET` | `/sessoes/{filme}` | Sessões de um filme (aceita `?cidade=`, `?data=`, `?teatro=`, `?hora=`) |
+| `GET` | `/sessoes/{filme}` | Sessões de um filme; `filme` pode ser título parcial, urlKey ou ID (aceita `?cidade=`, `?data=`, `?teatro=`, `?hora=`) |
 | `GET` | `/sessoes/{filme}/datas` | Datas disponíveis para um filme (aceita `?cidade=`) |
 | `GET` | `/tickets/{session_id}/{section_id}` | Preços com taxa de serviço separada |
 | `GET` | `/assentos/{session_id}/{section_id}` | Mapa de assentos completo (`?atualizar=1` ignora o cache) |
 | `GET` | `/ocupacao?s=sessão:seção&s=…` | Só os totais de ocupação de várias sessões, em paralelo (máx. 80) |
 
 
-O parâmetro `filme` e `cidade` aceitam texto parcial sem acento, igual ao CLI. Cidade padrão: Fortaleza.
+Os parâmetros `filme` e `cidade` aceitam texto parcial sem acento, igual ao CLI (`filme` também aceita o ID numérico, que o frontend usa por ser mais rápido). Cidade padrão: Fortaleza.
+
+Respostas de leitura levam `Cache-Control` curto e vão com gzip. `/ocupacao` é a versão leve de `/assentos` para listas.
 
 **Exemplos:**
 ```bash
@@ -238,8 +243,8 @@ Duas camadas: memória do processo (sem disco/JSON em cache hit) e arquivos JSON
 | Dado | TTL | Motivo |
 |---|---|---|
 | Cidades | 24 horas | Raramente muda |
-| Lista de filmes (catálogo) | 1 hora | Muda quando estreia filme novo |
-| Filmes na cidade (por cinema) | 15 min | Derivado das sessões; chave inclui data |
+| Lista de filmes (catálogo) | 1 hora | Muda quando estreia filme novo (servido vencido por até 24 h) |
+| Filmes na cidade (scan de cinemas) | 15 min | Derivado das sessões de hoje e amanhã; vencido, ainda é servido por até 6 h enquanto atualiza |
 | Lista de cinemas | 1 hora | Estável |
 | Sessões / programação | 15 min | Estável após ser publicada |
 | Preços (tickets) | 1 hora | Raramente muda durante o dia |
@@ -257,14 +262,15 @@ GET /v0/theaters/city/{id}?partnership=ingresso.com
 **`filmes` / `GET /filmes`**
 ```
 1. GET /v0/theaters/city/{id}  (cached 1h)
-   → top-30 cinemas por número de salas
+   → top-40 cinemas por número de salas
 
-2. [paralelo, 10 threads] GET /v0/sessions/city/{id}/theater/{tid}/.../groupBy/sessionType?date=D
+2. [paralelo, 16 threads] GET /v0/sessions/city/{id}/theater/{tid}/.../groupBy/sessionType?date=D
    → hoje + amanhã → coleta IDs dos filmes com sessões reais
-   → resultado cacheado por 15min (chave inclui data)
+   → resultado cacheado por 15min, servido vencido por até 6h (stale-while-revalidate)
 
 3. GET /v0/events?cityId={id}&isPlaying=true
    → filtra para filmes do passo 2 + pré-vendas com datas disponíveis
+   → cidade com mais de 40 cinemas: os demais filmes são checados via /dates
    → ordena por countIsPlaying
 ```
 
@@ -311,15 +317,16 @@ pip install -r requirements.txt
 python3 -m pytest -v
 ```
 
-81 testes, nenhuma chamada de rede — tudo é executado com fixtures salvas em `tests/fixtures/`.
+117 testes, nenhuma chamada de rede — tudo é executado com fixtures salvas em `tests/fixtures/`.
 
 ### Estrutura
 
 ```
 tests/
 ├── conftest.py          ← fixtures compartilhadas (carrega os JSONs)
-├── test_core.py         ← testa helpers e cache (44 testes)
+├── test_core.py         ← testa helpers e cache (68 testes)
 ├── test_app.py          ← testa rotas FastAPI (29 testes)
+├── test_resilience.py   ← cache em camadas, erros HTTP, /ocupacao (20 testes)
 └── fixtures/
     ├── movies.json      ← 3 filmes reais do cityId=36
     ├── sessions.json    ← 1 cinema, 1 sessionType, 2 sessões
@@ -333,11 +340,13 @@ tests/
 | Módulo | O que cobre |
 |---|---|
 | `test_core.py` | `normalize`, `find_movie`, `resolve_date`, `find_city`, `resolve_city`, `parse_tickets`, `check_schema` (log de mudanças de formato), cache (hit/miss/expirado) |
-| `test_app.py` | Todos os 6 endpoints, status codes (200/404/503), filtros `?teatro=` `?hora=` `?cidade=`, `meia_fee_warning`, cálculo de ocupação, auto-advance de data |
+| `test_resilience.py` | `fetch()` (5xx levanta `APIError`, 204/404 viram vazio, erro não é cacheado), cache em memória + disco, stale-while-revalidate e fallback, deduplicação de requisições concorrentes, scan de cidades grandes, `/ocupacao`, `?atualizar=1`, gzip e `Cache-Control` |
+| `test_app.py` | Todos os endpoints principais, status codes (200/404/503), filtros `?teatro=` `?hora=` `?cidade=`, `meia_fee_warning`, cálculo de ocupação, auto-advance de data |
 
 ### O que não é testado (intencionalmente)
 
-- `fetch()` — só encapsula `requests`, sem lógica própria
+- O frontend (`static/index.html`) — verificado manualmente no navegador, sem testes automatizados
+- Chamadas reais ao ingresso.com — a suíte é 100% offline
 - `render_seat_map()` — saída visual, não há assertions significativas
 - CLI (`cli.py`) — testado manualmente; automatizar requer captura de output rich
 
@@ -351,7 +360,8 @@ Para comprar, use o site ou app da ingresso.com ou a bilheteria do cinema.
 
 ## Limitações conhecidas
 
-- **`session.price` na saída padrão** pode ser o preço de SuperSeat quando a sala tem recliners — UCI Iguatemi é o caso conhecido. Use `--precos` ou `GET /tickets` para o breakdown real.
+- **`session.price` na saída padrão** pode ser o preço de SuperSeat quando a sala tem recliners — UCI Iguatemi é o caso conhecido. Use `--precos` ou `GET /tickets` para o breakdown real. O frontend mostra "até R$ X" na lista e o preço exato no painel da sessão.
+- **Primeira consulta do dia numa cidade** leva alguns segundos (fan-out de ~60 requisições ao ingresso.com); as seguintes saem do cache. Num CLI, que é um processo curto, a atualização em background não termina, então o aquecimento fica por conta da API/servidor.
 - **Sessões de hoje** às vezes retornam vazio se o horário já passou — o projeto avança automaticamente para a próxima data disponível.
 - **Filmes recém-estreados** podem não aparecer na listagem por cidade até que as sessões sejam publicadas no dia anterior.
 
