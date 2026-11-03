@@ -6,10 +6,12 @@ the CLI and the web API can handle errors their own way.
 """
 import json
 import os
+import re
 import threading
 import time
 import unicodedata
 from contextlib import contextmanager
+from difflib import SequenceMatcher
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -469,17 +471,67 @@ def resolve_city(arg: str | None) -> tuple[int, str]:
         return None, None
     return int(city["id"]), city["name"]
 
-def find_movie(query: str, movies: list) -> dict | None:
-    """Match movie by ID, urlKey, or partial title — accent/case-insensitive."""
-    q     = normalize(query)
-    raw_q = query.strip().lower()
+def _tokens(s: str) -> list[str]:
+    """Words of `s`, lowercase, accent-free; punctuation and hyphens split words."""
+    return re.findall(r"[a-z0-9]+", normalize(s))
 
+def match_score(query: str, title: str) -> float:
+    """
+    How well `query` matches `title` (0 = no match; higher is better).
+
+    Tiers, best first — each is tolerant of accents, case, hyphens/punctuation
+    and extra spaces ("cara de barro" == "Cara-De-Barro"):
+      3.0+  query is a contiguous run of the title's words
+      2.5   every query word appears somewhere in the title (any order)
+      2.0   query matches ignoring spaces ("supermario")
+      1.x   typos: each significant query word is close to some title word
+    """
+    q, t = _tokens(query), _tokens(title)
+    if not q or not t:
+        return 0.0
+    qj, tj = " ".join(q), " ".join(t)
+    if qj in tj:
+        return 3.5 if tj.startswith(qj) else 3.0
+    if all(w in tj for w in q):
+        return 2.5
+    qn, tn = "".join(q), "".join(t)
+    if qn in tn:
+        return 2.0
+
+    # Typos. Short words ("de", "o") are noise here, so only judge the long ones.
+    sig = [w for w in q if len(w) > 2] or q
+    per_word = [max(SequenceMatcher(None, w, tw).ratio() for tw in t) for w in sig]
+    if min(per_word) >= 0.78 and len(sig[0]) >= 4:
+        return 1.0 + sum(per_word) / len(per_word)
+
+    # Typos in a run-together query: compare against same-length slices of the title.
+    if len(qn) >= 5:
+        n = len(qn)
+        best = max(
+            (SequenceMatcher(None, qn, tn[i:i + n]).ratio() for i in range(max(1, len(tn) - n + 1))),
+            default=0.0,
+        )
+        if best >= 0.85:
+            return 1.0 + best
+    return 0.0
+
+def find_movie(query: str, movies: list) -> dict | None:
+    """
+    Match a movie by ID, urlKey, or title — tolerant of accents, case,
+    hyphens/punctuation, word order and small typos. Best match wins; ties go
+    to the earlier movie in `movies` (already sorted by popularity).
+    """
+    raw_q = query.strip().lower()
     for m in movies:
         if str(m["id"]) == query or m.get("urlKey", "").lower() == raw_q:
             return m
 
-    matches = [m for m in movies if q in normalize(m["title"])]
-    return matches[0] if matches else None
+    best, best_score = None, 0.0
+    for m in movies:
+        score = match_score(query, m["title"])
+        if score > best_score:
+            best, best_score = m, score
+    return best
 
 def resolve_date(arg: str | None) -> tuple[str, bool]:
     """
