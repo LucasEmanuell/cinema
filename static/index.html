@@ -660,6 +660,39 @@ createApp({
   setup() {
     // ── Helpers ───────────────────────────────────────────────────
     const norm = s => (s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
+    // Fuzzy movie search — same tiers as core.match_score (accents, hyphens, word
+    // order, run-together words and small typos all still match).
+    const tokens = s => norm(s).match(/[a-z0-9]+/g) ?? []
+    function similarity(a, b) {                       // 1 - normalised edit distance (swaps count as 1)
+      const m = a.length, n = b.length
+      const d = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n).fill(0)])
+      for (let j = 0; j <= n; j++) d[0][j] = j
+      for (let i = 1; i <= m; i++)
+        for (let j = 1; j <= n; j++) {
+          d[i][j] = Math.min(d[i-1][j] + 1, d[i][j-1] + 1, d[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1))
+          if (i > 1 && j > 1 && a[i-1] === b[j-2] && a[i-2] === b[j-1]) d[i][j] = Math.min(d[i][j], d[i-2][j-2] + 1)
+        }
+      return 1 - d[m][n] / Math.max(m, n, 1)
+    }
+    function matchScore(query, title) {
+      const q = tokens(query), t = tokens(title)
+      if (!q.length || !t.length) return 0
+      const qj = q.join(' '), tj = t.join(' ')
+      if (tj.includes(qj)) return tj.startsWith(qj) ? 3.5 : 3
+      if (q.every(w => tj.includes(w))) return 2.5
+      const qn = q.join(''), tn = t.join('')
+      if (tn.includes(qn)) return 2
+      const sig = q.filter(w => w.length > 2); if (!sig.length) sig.push(...q)
+      const per = sig.map(w => Math.max(...t.map(tw => similarity(w, tw))))
+      if (Math.min(...per) >= 0.78 && sig[0].length >= 4) return 1 + per.reduce((a, b) => a + b) / per.length
+      if (qn.length >= 5) {
+        let best = 0
+        for (let i = 0; i <= Math.max(0, tn.length - qn.length); i++)
+          best = Math.max(best, similarity(qn, tn.slice(i, i + qn.length)))
+        if (best >= 0.85) return 1 + best
+      }
+      return 0
+    }
     const fmtPrice = v => 'R$ ' + Number(v).toFixed(2).replace('.', ',')
     const keyOf = s => `${s.id}:${s.defaultSector}`
 
@@ -731,11 +764,15 @@ createApp({
     const presaleCount = computed(() => movies.value.filter(m => m.inPreSale).length)
 
     const visibleMovies = computed(() => {
-      const term = norm(search.value)
-      return movies.value.filter(m =>
-        (movieFilter.value === 'all' || (movieFilter.value === 'presale') === !!m.inPreSale) &&
-        (!term || norm(m.title).includes(term))
-      )
+      const list = movies.value.filter(m =>
+        movieFilter.value === 'all' || (movieFilter.value === 'presale') === !!m.inPreSale)
+      if (!search.value.trim()) return list
+      // Best match first; ties keep the popularity order (sort is stable).
+      return list
+        .map(m => ({ m, score: matchScore(search.value, m.title) }))
+        .filter(x => x.score > 0)
+        .sort((a, b) => b.score - a.score)
+        .map(x => x.m)
     })
 
     // ── Sessions derived data ─────────────────────────────────────

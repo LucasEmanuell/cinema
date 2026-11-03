@@ -105,6 +105,42 @@ class TestFindMovie:
     def test_not_found_returns_none(self, movies):
         assert find_movie("xyznotafilm999", movies) is None
 
+    # ── tolerance: punctuation, word order, typos ────────────────────────────
+    CATALOG = ["Cara-De-Barro", "Street Fighter", "Super Mario Galaxy: O Filme",
+               "Pânico 7", "Velhos Bandidos", "Minha Melhor Amiga", "Verity"]
+
+    @pytest.fixture
+    def catalog(self):
+        return [{"id": i, "title": t, "urlKey": t.lower()} for i, t in enumerate(self.CATALOG)]
+
+    @pytest.mark.parametrize("query, expected", [
+        ("cara de barro",     "Cara-De-Barro"),       # hyphens in the title
+        ("cara barro",        "Cara-De-Barro"),       # missing stopword
+        ("barro cara",        "Cara-De-Barro"),       # word order
+        ("cra de barro",      "Cara-De-Barro"),       # typo: dropped letter
+        ("street figther",    "Street Fighter"),      # typo: swapped letters
+        ("supermario",        "Super Mario Galaxy: O Filme"),   # run together
+        ("super maro",        "Super Mario Galaxy: O Filme"),   # typo
+        ("panico",            "Pânico 7"),            # accent
+        ("velho bandido",     "Velhos Bandidos"),     # singular/plural
+        ("minha melor amiga", "Minha Melhor Amiga"),
+        ("verty",             "Verity"),
+    ])
+    def test_tolerant_queries(self, catalog, query, expected):
+        assert find_movie(query, catalog)["title"] == expected
+
+    @pytest.mark.parametrize("query", ["batman", "xyz", "zzzzzz 99"])
+    def test_unrelated_queries_do_not_match(self, catalog, query):
+        assert find_movie(query, catalog) is None
+
+    def test_best_match_beats_first_match(self):
+        movies = [{"id": 1, "title": "Um Mario Qualquer"}, {"id": 2, "title": "Mario Bros"}]
+        assert find_movie("mario", movies)["id"] == 2      # title starts with the query
+
+    def test_ties_keep_original_popularity_order(self):
+        movies = [{"id": 1, "title": "Mario Um"}, {"id": 2, "title": "Mario Dois"}]
+        assert find_movie("mario", movies)["id"] == 1
+
     def test_returns_first_match_when_multiple(self, movies):
         # A query that matches all movies should return the first one
         result = find_movie("a", movies)  # 'a' is in most titles
