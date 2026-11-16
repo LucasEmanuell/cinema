@@ -22,3 +22,9 @@ venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# Coleta de programação (dados, não código)
+tools/*.db
+tools/*.db-*
+tools/*.lock
+bot_state.db*
