@@ -292,6 +292,25 @@ def api_movies(city_id: int = CITY_ID):
         key=lambda m: (bool(m.get("inPreSale")), -m.get("countIsPlaying", 0)),
     )
 
+def api_coming_soon(city_id: int = CITY_ID):
+    """Titles flagged isComingSoon, soonest premiere first.
+
+    Uses /templates/soon/{city}: same titles as the isComingSoon slice of
+    /events, but ~300 KB in ~0.1 s instead of ~48 MB. The list is national.
+    """
+    data = fetch(
+        f"{CONTENT_API}/templates/soon/{city_id}",
+        cache_key=f"soon_{city_id}",
+        ttl=TTL["movies"],
+        stale=86400,
+    ) or []
+
+    def _premiere(m):
+        p = m.get("premiereDate")
+        return (p.get("localDate") if isinstance(p, dict) else p) or "9999"
+
+    return sorted((m for m in data if m.get("isComingSoon", True)), key=_premiere)
+
 def api_session_dates(movie_id: str, city_id: int = CITY_ID):
     return fetch(
         f"{CONTENT_API}/sessions/city/{city_id}/event/{movie_id}/dates/partnership/{PARTNERSHIP}",
