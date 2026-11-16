@@ -18,6 +18,10 @@ cinema/
 ├── cli.py           ← display (rich), comandos, argparse
 ├── app.py           ← API web (FastAPI) + serve o frontend
 ├── cinema.py        ← entrypoint do CLI (8 linhas, chama cli.py)
+├── bot.py           ← bot do Telegram (long polling, estado em SQLite)
+├── events.py        ← classifica estreia/evento/relançamento/show e monta o relatório semanal
+├── tools/
+│   └── watch_schedule.py  ← coleta (stdlib) de quando cada cinema publica a grade da semana
 ├── static/
 │   ├── index.html                      ← frontend (Vue 3, sem build step)
 │   └── vue.3.5.13.esm-browser.prod.js  ← Vue fixo e local (sem CDN)
@@ -310,6 +314,29 @@ Para quem paga meia (estudantes, idosos, PCD), a taxa online equivale ao própri
 
 ---
 
+## Bot do Telegram
+
+`bot.py` roda em long polling, sem dependências extras. Crie o bot com o @BotFather e:
+
+```bash
+export TELEGRAM_BOT_TOKEN=...        # obrigatório
+export BOT_ALLOWED_IDS=123456        # opcional: restringe a estes chat ids
+python bot.py
+```
+
+| Comando | O que faz |
+|---|---|
+| `/cinemas` | escolhe os cinemas favoritos (botões) |
+| `/hoje`, `/amanha`, `/sessoes [data]` | sessões nos favoritos (as já iniciadas são omitidas) |
+| `/filme <título> [data]` | sessões de um filme, favoritos primeiro |
+| `/embreve` | próximas estreias |
+| `/semana` | estreias, relançamentos, eventos (ex.: UCI Day Terror, Porão do Belas), shows e festivais dos próximos 7 dias (`events.py`) |
+| `/seguir`, `/seguindo`, `/parar` | filmes que você espera |
+| `/avisos` | liga/desliga notificações |
+
+Notificações (checagem de hora em hora): filme novo na grade de um favorito (⭐ se você segue), título novo em "em breve", mudança de data/pré-venda/estreia de um filme seguido e resumo semanal na quinta (`DIGEST_WEEKDAY`, `DIGEST_HOUR`).
+Estado em SQLite (`bot_state.db`, ou `BOT_DB`), por `chat_id`: favoritos, lista de filmes seguidos e o que já foi avisado. Na primeira execução o bot só registra o que existe, sem notificar.
+
 ## Testes
 
 ```bash
@@ -317,7 +344,7 @@ pip install -r requirements.txt
 python3 -m pytest -v
 ```
 
-117 testes, nenhuma chamada de rede — tudo é executado com fixtures salvas em `tests/fixtures/`.
+156 testes, nenhuma chamada de rede — tudo é executado com fixtures salvas em `tests/fixtures/`.
 
 ### Estrutura
 
@@ -327,6 +354,8 @@ tests/
 ├── test_core.py         ← testa helpers e cache (68 testes)
 ├── test_app.py          ← testa rotas FastAPI (29 testes)
 ├── test_resilience.py   ← cache em camadas, erros HTTP, /ocupacao (20 testes)
+├── test_bot.py          ← estado SQLite, handlers, jobs de aviso (20 testes)
+├── test_events.py       ← classificação por título/tag e relatório semanal (19 testes)
 └── fixtures/
     ├── movies.json      ← 3 filmes reais do cityId=36
     ├── sessions.json    ← 1 cinema, 1 sessionType, 2 sessões
@@ -363,6 +392,7 @@ Para comprar, use o site ou app da ingresso.com ou a bilheteria do cinema.
 - **`session.price` na saída padrão** pode ser o preço de SuperSeat quando a sala tem recliners — UCI Iguatemi é o caso conhecido. Use `--precos` ou `GET /tickets` para o breakdown real. O frontend mostra "até R$ X" na lista e o preço exato no painel da sessão.
 - **Primeira consulta do dia numa cidade** leva alguns segundos (fan-out de ~60 requisições ao ingresso.com); as seguintes saem do cache. Num CLI, que é um processo curto, a atualização em background não termina, então o aquecimento fica por conta da API/servidor.
 - **Sessões de hoje** às vezes retornam vazio se o horário já passou — o projeto avança automaticamente para a próxima data disponível.
+- **Eventos e relançamentos** não têm flag na API (`isReexhibition` vem sempre falso): `events.py` os reconhece pelo título e pelas `tags`. Uma série nova com outro nome aparece como estreia comum até ganhar um padrão.
 - **Filmes recém-estreados** podem não aparecer na listagem por cidade até que as sessões sejam publicadas no dia anterior.
 
 ---
