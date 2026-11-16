@@ -6,7 +6,7 @@ Usage:
   python cinema.py filmes
   python cinema.py sessoes "super mario"
   python cinema.py sessoes "super mario" --data amanha
-  python cinema.py sessoes "super mario" --teatro "via sul" --assentos
+  python cinema.py sessoes "super mario" --cinema "via sul" --assentos
   python cinema.py assentos <session_id> <section_id>
 """
 import argparse
@@ -296,13 +296,13 @@ def cmd_sessoes(args):
     theaters = day["theaters"]
 
     # ── Filters ───────────────────────────────────────────────────────────────
-    teatro_q = normalize(args.teatro) if args.teatro else None
+    cinema_q = normalize(args.cinema) if args.cinema else None
     hora_q   = args.hora.replace("h", ":").strip() if args.hora else None
 
-    if teatro_q:
-        theaters = [t for t in theaters if teatro_q in normalize(t["name"])]
+    if cinema_q:
+        theaters = [t for t in theaters if cinema_q in normalize(t["name"])]
         if not theaters:
-            console.print(f"\n[yellow]Nenhum cinema encontrado com:[/yellow] {args.teatro}")
+            console.print(f"\n[yellow]Nenhum cinema encontrado com:[/yellow] {args.cinema}")
             console.print("[dim]Tente parte do nome, ex: 'via sul', 'iguatemi', 'benfica'[/dim]\n")
             return
 
@@ -413,14 +413,14 @@ def cmd_sessoes(args):
 
     # Footer hints
     hints = []
-    if not args.teatro:
-        hints.append("--teatro \"nome\"  para filtrar por cinema")
+    if not args.cinema:
+        hints.append("--cinema \"nome\"  para filtrar por cinema")
     if not args.precos:
         hints.append("--precos  taxa de serviço e dica de bilheteria")
     if not args.ocupacao and not args.assentos:
         hints.append("--ocupacao  lotação em tempo real")
     if not args.assentos:
-        hints.append("--assentos  mapa da sala (use com --teatro)")
+        hints.append("--assentos  mapa da sala (use com --cinema)")
     if not args.ids:
         hints.append("--ids  mostra session/section IDs")
     if hints:
@@ -442,15 +442,15 @@ def cmd_cinemas(args):
         console.print(f"[red]Nenhum cinema encontrado em {city_name}.[/red]")
         return
 
-    teatro_q = normalize(args.teatro) if args.teatro else None
-    if teatro_q:
-        theaters = [t for t in theaters if teatro_q in normalize(t["name"])]
+    cinema_q = normalize(args.cinema) if args.cinema else None
+    if cinema_q:
+        theaters = [t for t in theaters if cinema_q in normalize(t["name"])]
         if not theaters:
-            console.print(f"\n[yellow]Nenhum cinema encontrado com:[/yellow] {args.teatro}\n")
+            console.print(f"\n[yellow]Nenhum cinema encontrado com:[/yellow] {args.cinema}\n")
             return
 
-    # ── Detail mode (one or few theaters after --teatro filter) ───────────────
-    if args.teatro:
+    # ── Detail mode (one or few theaters after --cinema filter) ───────────────
+    if args.cinema:
         for t in theaters:
             rooms    = t.get("rooms", [])
             capacity = sum(r.get("capacity", 0) for r in rooms)
@@ -509,7 +509,7 @@ def cmd_cinemas(args):
     console.print(table)
     console.print()
     console.print(
-        "[dim]  python cinema.py cinemas --teatro \"nome\"  para ver as salas de um cinema[/dim]"
+        "[dim]  python cinema.py cinemas --cinema \"nome\"  para ver as salas de um cinema[/dim]"
     )
     console.print()
 
@@ -535,7 +535,7 @@ def main():
 exemplos:
   python cinema.py cinemas
   python cinema.py cinemas --cidade "sao paulo"
-  python cinema.py cinemas --teatro "cinepolis"
+  python cinema.py cinemas --cinema "cinepolis"
   python cinema.py filmes
   python cinema.py filmes --cidade "recife"
   python cinema.py sessoes "super mario"
@@ -543,7 +543,7 @@ exemplos:
   python cinema.py sessoes "super mario" --data amanha
   python cinema.py sessoes "super mario" --data 2026-04-01
   python cinema.py sessoes "velhos bandidos" --precos
-  python cinema.py sessoes "super mario" --teatro "via sul" --assentos
+  python cinema.py sessoes "super mario" --cinema "via sul" --assentos
   python cinema.py assentos 84262624 5472265
         """,
     )
@@ -552,8 +552,9 @@ exemplos:
     pc = sub.add_parser("cinemas", help="Lista cinemas de uma cidade")
     pc.add_argument("--cidade",  metavar="CIDADE",
                     help="Cidade (padrão: Fortaleza). Parcial, sem acento, ex: 'recife', 'sao paulo'")
-    pc.add_argument("--teatro",  metavar="NOME",
+    pc.add_argument("--cinema",  metavar="NOME", dest="cinema",
                     help="Filtra por nome e mostra detalhes das salas")
+    pc.add_argument("--teatro",  dest="cinema", help=argparse.SUPPRESS)  # alias antigo
 
     pf = sub.add_parser("filmes", help="Lista filmes em cartaz")
     pf.add_argument("--cidade", metavar="CIDADE",
@@ -569,12 +570,13 @@ exemplos:
                    help="Mostra taxa de serviço e alerta quando vale a pena comprar na bilheteria")
     p.add_argument("--ocupacao", action="store_true",
                    help="Mostra lotação em tempo real (faz requisições adicionais)")
-    p.add_argument("--teatro",   metavar="NOME",
+    p.add_argument("--cinema",   metavar="NOME", dest="cinema",
                    help="Filtra por nome do cinema (parcial, sem acento)")
+    p.add_argument("--teatro",   dest="cinema", help=argparse.SUPPRESS)  # alias antigo
     p.add_argument("--hora",     metavar="HH:MM",
                    help="Filtra por horário, ex: '20:00' ou '20'")
     p.add_argument("--assentos", action="store_true",
-                   help="Mostra mapa de assentos inline (recomendado usar com --teatro)")
+                   help="Mostra mapa de assentos inline (recomendado usar com --cinema)")
     p.add_argument("--numeros",  action="store_true",
                    help="No mapa de assentos, mostra o número do assento ao invés do símbolo")
     p.add_argument("--ids",      action="store_true",

@@ -6,7 +6,7 @@ Run:
 
 Endpoints:
   GET /filmes
-  GET /sessoes/{filme}?data=&teatro=&hora=
+  GET /sessoes/{filme}?data=&cinema=&hora=
   GET /sessoes/{filme}/datas
   GET /tickets/{session_id}/{section_id}
   GET /assentos/{session_id}/{section_id}?atualizar=1
@@ -172,8 +172,9 @@ def get_sessoes(
     filme:  str,
     cidade: str | None = Query(None, description="Cidade (padrão: Fortaleza)"),
     data:   str | None = Query(None, description="YYYY-MM-DD, 'amanha', '+1', '+2'…"),
-    teatro: str | None = Query(None, description="Filtro parcial por nome do cinema"),
+    cinema: str | None = Query(None, description="Filtro parcial por nome do cinema"),
     hora:   str | None = Query(None, description="Filtro por horário, ex: '20' ou '20:00'"),
+    teatro: str | None = Query(None, description="Alias antigo de `cinema`", deprecated=True),
 ):
     """
     Sessões de um filme para a data indicada (padrão: hoje).
@@ -209,8 +210,9 @@ def get_sessoes(
     theaters = day["theaters"]
 
     # Apply filters
-    if teatro:
-        q = normalize(teatro)
+    cinema = cinema or teatro
+    if cinema:
+        q = normalize(cinema)
         theaters = [t for t in theaters if q in normalize(t["name"])]
 
     hora_q = hora.replace("h", ":").strip() if hora else None

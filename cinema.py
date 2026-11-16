@@ -6,7 +6,7 @@ Uso:
   python cinema.py filmes
   python cinema.py sessoes "super mario"
   python cinema.py sessoes "super mario" --data amanha
-  python cinema.py sessoes "super mario" --teatro "via sul" --assentos
+  python cinema.py sessoes "super mario" --cinema "via sul" --assentos
   python cinema.py assentos <session_id> <section_id>
 
 API web:

@@ -5,7 +5,7 @@ What is tested here:
   - All 6 endpoints: /cidades, /filmes, /sessoes/{filme}/datas,
     /sessoes/{filme}, /tickets/{sid}/{secid}, /assentos/{sid}/{secid}
   - HTTP status codes: 200 (happy path), 404 (not found), 503 (API down)
-  - Query filters: ?cidade=, ?teatro=, ?hora=, ?data=
+  - Query filters: ?cidade=, ?cinema=, ?hora=, ?data=
   - Response shape: required fields are present and typed correctly
   - Business logic: meia_fee_warning flag, occupancy calculation,
     auto-advance to next available date
@@ -154,24 +154,34 @@ class TestGetSessoes:
         assert "date" in body
         assert "theaters" in body
 
-    def test_teatro_filter_matches(self, movies, sessions):
-        """Partial teatro name should return only the matching theater."""
+    def test_cinema_filter_matches(self, movies, sessions):
+        """Partial cinema name should return only the matching theater."""
         theater_name = sessions["theaters"][0]["name"]
         partial = theater_name[:6]
         with patch("app.resolve_city", return_value=(36, "Fortaleza")), \
              patch("app.api_movies", return_value=movies), \
              patch("app.api_sessions", return_value=sessions), \
              patch("app.api_session_dates", return_value=[]):
-            r = client.get(f"/sessoes/{movies[0]['urlKey']}?teatro={partial}")
+            r = client.get(f"/sessoes/{movies[0]['urlKey']}?cinema={partial}")
         assert r.status_code == 200
         assert len(r.json()["theaters"]) == 1
 
-    def test_teatro_filter_no_match_returns_empty_list(self, movies, sessions):
+    def test_teatro_alias_still_works(self, movies, sessions):
+        """Old ?teatro= keeps working as an alias of ?cinema=."""
         with patch("app.resolve_city", return_value=(36, "Fortaleza")), \
              patch("app.api_movies", return_value=movies), \
              patch("app.api_sessions", return_value=sessions), \
              patch("app.api_session_dates", return_value=[]):
-            r = client.get(f"/sessoes/{movies[0]['urlKey']}?teatro=xyznotacinema999")
+            partial = sessions["theaters"][0]["name"][:6]
+            r = client.get(f"/sessoes/{movies[0]['urlKey']}?teatro={partial}")
+        assert r.status_code == 200 and r.json()["theaters"]
+
+    def test_cinema_filter_no_match_returns_empty_list(self, movies, sessions):
+        with patch("app.resolve_city", return_value=(36, "Fortaleza")), \
+             patch("app.api_movies", return_value=movies), \
+             patch("app.api_sessions", return_value=sessions), \
+             patch("app.api_session_dates", return_value=[]):
+            r = client.get(f"/sessoes/{movies[0]['urlKey']}?cinema=xyznotacinema999")
         assert r.status_code == 200
         assert r.json()["theaters"] == []
 

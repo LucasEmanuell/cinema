@@ -45,18 +45,18 @@ python cinema.py <comando> [opções]
 ```bash
 python cinema.py cinemas
 python cinema.py cinemas --cidade "sao paulo"
-python cinema.py cinemas --teatro "cinepolis"
+python cinema.py cinemas --cinema "cinepolis"
 ```
 
 Lista todos os cinemas da cidade com rede, bairro, número de salas e capacidade total.
-Com `--teatro`, filtra e mostra o detalhe de cada sala individualmente.
+Com `--cinema`, filtra e mostra o detalhe de cada sala individualmente.
 
 **Opções:**
 
 | Flag | O que faz |
 |---|---|
 | `--cidade CIDADE` | Cidade alvo (padrão: Fortaleza). Parcial, sem acento. |
-| `--teatro NOME` | Filtra por nome e exibe as salas do cinema. |
+| `--cinema NOME` | Filtra por nome e exibe as salas do cinema. |
 
 ---
 
@@ -93,11 +93,11 @@ Sem `--data`, usa o dia de hoje. Se não houver sessões hoje (ex: tarde da noit
 |---|---|
 | `--cidade CIDADE` | Cidade alvo (padrão: Fortaleza). Parcial, sem acento. Ex: `"recife"`, `"sao paulo"`. |
 | `--data DATA` | Data alvo. Aceita `YYYY-MM-DD`, `amanha`, `+1`, `+2`… |
-| `--teatro NOME` | Filtra por nome do cinema (parcial, sem acento). Ex: `"via sul"`, `"iguatemi"`. |
+| `--cinema NOME` | Filtra por nome do cinema (parcial, sem acento). Ex: `"via sul"`, `"iguatemi"`. (`--teatro` segue funcionando como alias antigo.) |
 | `--hora HH:MM` | Filtra por horário. Ex: `"20"` mostra só sessões das 20h. |
 | `--precos` | Mostra taxa de serviço separada. Alerta quando a taxa é desproporcional para quem paga meia. |
 | `--ocupacao` | Mostra lotação em tempo real de cada sessão (requisições extras). |
-| `--assentos` | Mostra mapa de assentos inline. Recomendado usar com `--teatro`. |
+| `--assentos` | Mostra mapa de assentos inline. Recomendado usar com `--cinema`. |
 | `--numeros` | No mapa de assentos, exibe o número do assento no lugar do símbolo. |
 | `--ids` | Exibe `session_id` e `section_id` de cada sessão (modo desenvolvedor). |
 
@@ -119,11 +119,11 @@ python cinema.py sessoes "mario" --data +2
 python cinema.py sessoes "super mario" --data 2026-04-05
 
 # Filtrar por cinema e horário
-python cinema.py sessoes "panico" --teatro "via sul" --hora 20
+python cinema.py sessoes "panico" --cinema "via sul" --hora 20
 
 # Ver mapa de assentos inline
-python cinema.py sessoes "panico" --teatro "via sul" --assentos
-python cinema.py sessoes "panico" --teatro "via sul" --assentos --numeros
+python cinema.py sessoes "panico" --cinema "via sul" --assentos
+python cinema.py sessoes "panico" --cinema "via sul" --assentos --numeros
 
 # Comparar preço online vs bilheteria
 python cinema.py sessoes "velhos bandidos" --precos
@@ -132,7 +132,7 @@ python cinema.py sessoes "velhos bandidos" --precos
 python cinema.py sessoes "super mario" --ocupacao
 
 # Obter IDs para usar com o comando assentos
-python cinema.py sessoes "panico" --teatro "benfica" --ids
+python cinema.py sessoes "panico" --cinema "benfica" --ids
 ```
 
 ---
@@ -148,7 +148,7 @@ Obtenha os IDs com `sessoes --ids`:
 
 ```bash
 # 1. Descubra os IDs
-python cinema.py sessoes "panico" --teatro "via sul" --ids
+python cinema.py sessoes "panico" --cinema "via sul" --ids
 
 # 2. Use-os para ver o mapa
 python cinema.py assentos 84262624 5472265
@@ -200,7 +200,7 @@ A API compartilha o mesmo cache do CLI (`~/.cache/cinema-fortaleza/`), então re
 |---|---|---|
 | `GET` | `/cidades` | Lista todos os estados e cidades disponíveis |
 | `GET` | `/filmes` | Filmes em cartaz (aceita `?cidade=`) |
-| `GET` | `/sessoes/{filme}` | Sessões de um filme; `filme` pode ser título parcial, urlKey ou ID (aceita `?cidade=`, `?data=`, `?teatro=`, `?hora=`) |
+| `GET` | `/sessoes/{filme}` | Sessões de um filme; `filme` pode ser título parcial, urlKey ou ID (aceita `?cidade=`, `?data=`, `?cinema=`, `?hora=`) |
 | `GET` | `/sessoes/{filme}/datas` | Datas disponíveis para um filme (aceita `?cidade=`) |
 | `GET` | `/tickets/{session_id}/{section_id}` | Preços com taxa de serviço separada |
 | `GET` | `/assentos/{session_id}/{section_id}` | Mapa de assentos completo (`?atualizar=1` ignora o cache) |
@@ -216,7 +216,7 @@ Respostas de leitura levam `Cache-Control` curto e vão com gzip. `/ocupacao` é
 curl "http://localhost:8000/cidades"
 curl "http://localhost:8000/filmes?cidade=recife"
 curl "http://localhost:8000/sessoes/panico?cidade=sao+paulo&data=amanha"
-curl "http://localhost:8000/sessoes/panico?teatro=via+sul&data=amanha"
+curl "http://localhost:8000/sessoes/panico?cinema=via+sul&data=amanha"
 curl "http://localhost:8000/assentos/84262624/5472265"
 ```
 
@@ -291,7 +291,7 @@ GET /v0/theaters/city/{id}?partnership=ingresso.com
 
 4. GET /v0/sessions/city/{id}/event/{id}/.../groupBy/sessionType?date=D
    → lista de cinemas → sessionTypes[] → sessions[]
-   → filtra por teatro e hora se fornecidos
+   → filtra por cinema e hora se fornecidos
 
 5. (precos / GET /tickets) GET /v1/sessions/{id}/sections/{sectionId}/tickets
    → price (bilheteria), service (taxa online), total
@@ -370,7 +370,7 @@ tests/
 |---|---|
 | `test_core.py` | `normalize`, `find_movie`, `resolve_date`, `find_city`, `resolve_city`, `parse_tickets`, `check_schema` (log de mudanças de formato), cache (hit/miss/expirado) |
 | `test_resilience.py` | `fetch()` (5xx levanta `APIError`, 204/404 viram vazio, erro não é cacheado), cache em memória + disco, stale-while-revalidate e fallback, deduplicação de requisições concorrentes, scan de cidades grandes, `/ocupacao`, `?atualizar=1`, gzip e `Cache-Control` |
-| `test_app.py` | Todos os endpoints principais, status codes (200/404/503), filtros `?teatro=` `?hora=` `?cidade=`, `meia_fee_warning`, cálculo de ocupação, auto-advance de data |
+| `test_app.py` | Todos os endpoints principais, status codes (200/404/503), filtros `?cinema=` `?hora=` `?cidade=`, `meia_fee_warning`, cálculo de ocupação, auto-advance de data |
 
 ### O que não é testado (intencionalmente)
 
