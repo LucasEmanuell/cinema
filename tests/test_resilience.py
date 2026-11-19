@@ -33,6 +33,40 @@ def _resp(status=200, data=None):
 
 # ── fetch(): errors vs. "nothing here" ────────────────────────────────────────
 
+class TestBlockedByFirewall:
+    @staticmethod
+    def _denied():
+        r = _resp(403)
+        r.text = "<HTML><TITLE>Access Denied</TITLE></HTML>"
+        return r
+
+    def test_access_denied_raises_blocked_and_stops_further_requests(self):
+        from core import APIBlocked
+        with patch.object(core, "_blocked_until", 0.0), \
+             patch.object(core._session, "get", return_value=self._denied()) as get:
+            with pytest.raises(APIBlocked):
+                core.fetch("http://x/a")
+            with pytest.raises(APIBlocked):
+                core.fetch("http://x/b")
+            assert get.call_count == 1                   # second call never reached the network
+            assert 0 < core.blocked_for() <= core.BLOCK_COOLDOWN
+
+    def test_requests_resume_after_cooldown(self):
+        with patch.object(core, "_blocked_until", time.time() - 1), \
+             patch.object(core._session, "get", return_value=_resp(200, {"ok": 1})):
+            assert core.fetch("http://x/a") == {"ok": 1}
+
+    def test_plain_403_without_firewall_page_is_not_a_block(self):
+        r = _resp(403)
+        r.text = '{"error": "forbidden"}'
+        with patch.object(core, "_blocked_until", 0.0), \
+             patch.object(core._session, "get", return_value=r):
+            with pytest.raises(APIError) as e:
+                core.fetch("http://x/a")
+            assert not isinstance(e.value, core.APIBlocked)
+            assert core.blocked_for() == 0
+
+
 class TestFetchErrors:
     def test_5xx_raises_instead_of_looking_empty(self):
         with patch.object(core._session, "get", return_value=_resp(503)):

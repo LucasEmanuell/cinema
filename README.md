@@ -393,6 +393,7 @@ Para comprar, use o site ou app da ingresso.com ou a bilheteria do cinema.
 ## Limitações conhecidas
 
 - **`session.price` (preço da listagem de sessões)** não é confiável: costuma ser o teto da sala e, em alguns cinemas, passa da tabela real (UCI Iguatemi: R$ 4,56 acima). Use `--precos` ou `GET /tickets` / `GET /precos` para o valor real. O frontend já usa `/precos` ("a partir de") na lista e a tabela completa no painel da sessão.
+- **Bloqueio por volume (403 "Access Denied")**: o firewall do ingresso.com bloqueia o IP que faz requisições demais. O app limita as chamadas simultâneas e, ao primeiro bloqueio, para de consultar por 5 min (serve só o cache) e avisa na tela. Na lista, a lotação é buscada só para as próximas 3 sessões de cada cinema (as outras ao passar o mouse, ou "Carregar todas") e o preço "a partir de" uma vez por cinema e tipo de sessão. Evite recarregar sem parar quando aparecer o aviso.
 - **Primeira consulta do dia numa cidade** leva alguns segundos (fan-out de ~60 requisições ao ingresso.com); as seguintes saem do cache. Num CLI, que é um processo curto, a atualização em background não termina, então o aquecimento fica por conta da API/servidor.
 - **Sessões de hoje** às vezes retornam vazio se o horário já passou — o projeto avança automaticamente para a próxima data disponível.
 - **Eventos e relançamentos** não têm flag na API (`isReexhibition` vem sempre falso): `events.py` os reconhece pelo título e pelas `tags`. Uma série nova com outro nome aparece como estreia comum até ganhar um padrão.

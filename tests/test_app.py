@@ -273,6 +273,40 @@ class TestGetPrecos:
         assert client.get("/precos?s=abc").status_code == 422
 
 
+class TestBlockedByFirewall:
+    def test_ocupacao_all_blocked_is_503_with_retry_after(self):
+        from core import APIBlocked
+        with patch("app.api_seats", side_effect=APIBlocked("x")):
+            r = client.get("/ocupacao?s=1:2&s=3:4")
+        assert r.status_code == 503
+        assert int(r.headers["Retry-After"]) >= 60
+        assert "limitou o acesso" in r.json()["detail"]
+
+    def test_precos_all_blocked_is_503(self):
+        from core import APIBlocked
+        with patch("app.api_tickets", side_effect=APIBlocked("x")):
+            r = client.get("/precos?s=1:2")
+        assert r.status_code == 503 and "Retry-After" in r.headers
+
+    def test_tickets_blocked_has_friendly_message(self):
+        from core import APIBlocked
+        with patch("app.api_tickets", side_effect=APIBlocked("x")):
+            r = client.get(f"/tickets/{SESSION_ID}/{SECTION_ID}")
+        assert r.status_code == 503
+        assert "https://" not in r.json()["detail"]            # no raw upstream URL
+
+    def test_partial_block_returns_nulls_not_503(self):
+        from core import APIBlocked
+        def seats(sid, sec):
+            if sid == "1":
+                raise APIBlocked("x")
+            return {"totalSeats": 10, "lines": [{"seats": [{"status": "Available"}] * 4}]}
+        with patch("app.api_seats", side_effect=seats):
+            r = client.get("/ocupacao?s=1:2&s=3:4")
+        assert r.status_code == 200
+        assert r.json()["1:2"] is None and r.json()["3:4"]["availableSeats"] == 4
+
+
 class TestGetTickets:
     def test_returns_parsed_tickets(self, tickets):
         with patch("app.api_tickets", return_value=tickets):

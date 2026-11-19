@@ -259,12 +259,34 @@ _session.mount("https://", _adapter)
 _session.mount("http://", _adapter)
 
 
+class APIBlocked(APIError):
+    """ingresso.com's firewall answered "Access Denied" (403): we are being rate-limited."""
+
+
+BLOCK_COOLDOWN = 300                        # seconds without touching the API after a block
+_blocked_until = 0.0
+_UPSTREAM = threading.BoundedSemaphore(6)   # max requests in flight to ingresso.com
+
+
+def blocked_for() -> int:
+    """Seconds left of the cooldown that follows a block (0 when requests are allowed)."""
+    return max(0, int(_blocked_until - time.time() + 0.999))
+
+
 def _http_get(url: str, params: dict | None, schema: str | None):
+    global _blocked_until
+    left = blocked_for()
+    if left:                                # keep quiet while blocked: every retry renews the block
+        raise APIBlocked(f"ingresso.com limitou o acesso; nova tentativa em {left}s")
     try:
-        r = _session.get(url, params=params, timeout=10)
+        with _UPSTREAM:
+            r = _session.get(url, params=params, timeout=10)
     except requests.RequestException as e:
         raise APIError(str(e))
 
+    if r.status_code == 403 and "Access Denied" in (r.text or "")[:500]:
+        _blocked_until = time.time() + BLOCK_COOLDOWN
+        raise APIBlocked(f"HTTP 403 em {url}")
     if r.status_code in (204, 404):
         return None                    # legitimately "nothing here"
     if not r.ok:

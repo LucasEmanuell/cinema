@@ -13,7 +13,7 @@
         const text = await r.text()
         let data = text
         try { data = text ? JSON.parse(text) : null } catch {}
-        return { status: r.status, ok: r.ok, data }
+        return { status: r.status, ok: r.ok, data, retryAfter: r.headers.get('retry-after') }
       })
     }
     window.__early = {}
@@ -133,6 +133,11 @@
     /* ── Main ────────────────────────────────────────────────────── */
     main { max-width: 1040px; margin: 0 auto; padding: 24px 24px 64px; }
 
+    .notice {
+      font-size: 13px; padding: 9px 12px; margin-bottom: 16px; border-radius: 8px;
+      background: var(--surface2); border: 1px solid var(--border); color: var(--muted);
+    }
+
     .error-box {
       background: rgba(248,113,113,.07);
       border: 1px solid rgba(248,113,113,.28);
@@ -240,7 +245,8 @@
     .type-chip[aria-pressed="true"] { background: var(--hover); border-color: var(--text); color: var(--text); }
     .check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; }
     .check input { accent-color: var(--accent); width: 16px; height: 16px; }
-    .filter-note { font-size: 12px; color: var(--muted); margin: 6px 0 14px; }
+    .filter-note { font-size: 13px; color: var(--muted); margin: 6px 0 14px; }
+    .link-btn { background: none; border: none; padding: 0; margin-left: 6px; font-size: inherit; color: var(--text); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 
     .theater { border-top: 1px solid var(--border); padding: 18px 0 6px; }
     .theater-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
@@ -385,6 +391,10 @@
 
   <main>
 
+    <p class="notice" v-if="blockedUntil" role="status">
+      O ingresso.com limitou o acesso por um momento. Lotação e preços voltam a carregar sozinhos às {{ blockedAt }}.
+    </p>
+
     <div class="error-box" v-if="error" role="alert">
       <span>{{ error }}</span>
       <button class="btn btn-ghost" v-if="retry" @click="retry">Tentar novamente</button>
@@ -517,6 +527,10 @@
               <input type="checkbox" v-model="showOcc" /> Mostrar assentos livres
             </label>
           </div>
+          <p class="filter-note" v-if="showOcc && occHidden && !occAll">
+            Lotação carregada para as próximas {{ OCC_AHEAD }} sessões de cada cinema; passe o mouse nas outras para ver.
+            <button class="link-btn" @click="occAll = true">Carregar todas ({{ occHidden }})</button>
+          </p>
           <p class="filter-note" v-if="hiddenPastCount && hidePast && isToday">{{ hiddenPastCount }} {{ hiddenPastCount === 1 ? "sessão já iniciada oculta" : "sessões já iniciadas ocultas" }}.</p>
           <p class="filter-note" v-else></p>
 
@@ -553,7 +567,7 @@
                       <span class="occ-txt">{{ occOf(s).availableSeats }} livres</span>
                     </template>
                   </span>
-                  <span class="occ occ-wait" v-else-if="showOcc && occEligible(s) && !occFail[keyOf(s)]" aria-hidden="true">
+                  <span class="occ occ-wait" v-else-if="showOcc && occWantedKeys.has(keyOf(s)) && !occFail[keyOf(s)]" aria-hidden="true">
                     <span class="occ-bar skeleton"></span><span class="occ-txt skeleton"></span>
                   </span>
                 </button>
@@ -735,7 +749,11 @@ createApp({
       if (early) delete window.__early[path]
       const p = (early ?? window.__raw(path)).then(res => {
         if (res.status === 404 || res.data === '' || res.data == null) return null
-        if (!res.ok) throw new Error(res.data?.detail ?? String(res.data) ?? res.status)
+        if (!res.ok) {
+          const err = new Error(res.data?.detail ?? String(res.data) ?? res.status)
+          if (res.status === 503 && res.retryAfter) { err.blocked = true; err.retryAfter = +res.retryAfter }
+          throw err
+        }
         return res.data
       })
       memo.set(path, { t: Date.now(), p })
@@ -862,6 +880,20 @@ createApp({
     }
     function clearFilters() { theaterFilter.value = ''; typeFilter.value = []; period.value = '' }
 
+    // ── ingresso.com rate limit ───────────────────────────────────
+    // A 503 with Retry-After means its firewall blocked us. Stop asking (every retry
+    // renews the block) and pick up again by itself when the cooldown ends.
+    const blockedUntil = ref(0)
+    const blockedAt = computed(() =>
+      new Date(blockedUntil.value).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }))
+    let blockTimer = null
+    function onBlocked(e) {
+      const ms = (e.retryAfter || 300) * 1000 + 2000
+      blockedUntil.value = Date.now() + ms
+      clearTimeout(blockTimer)
+      blockTimer = setTimeout(() => { blockedUntil.value = 0; loadPrices(); loadOccupancy() }, ms)
+    }
+
     // ── Occupancy (seats free, shown right in the list) ───────────
     const occ = reactive({})          // "sid:sec" -> { counts…, t }
     const occFail = reactive({})      // "sid:sec" -> time of last failure
@@ -869,6 +901,27 @@ createApp({
     let occGen = 0
     const occOf = s => occ[keyOf(s)]
     const occEligible = s => s.enabled && !s._past && s.hasSeatSelection !== false && !!s.defaultSector
+    // Occupancy costs one request per session, so the list loads it only for the next
+    // few sessions of each cinema; the others on hover, or all at once on demand.
+    const OCC_AHEAD = 3
+    const occAll = ref(false)
+    const occExtra = reactive(new Set())
+    const occWantedKeys = computed(() => {
+      const keys = new Set()
+      for (const t of filteredTheaters.value) {
+        const next = t.sessionTypes.flatMap(st => st.sessions).filter(occEligible)
+          .sort((a, b) => (a.date.localDate < b.date.localDate ? -1 : 1))
+        next.forEach((s, i) => { if (occAll.value || i < OCC_AHEAD || occExtra.has(keyOf(s))) keys.add(keyOf(s)) })
+      }
+      return keys
+    })
+    const occHidden = computed(() => {
+      let n = 0
+      for (const t of filteredTheaters.value)
+        for (const st of t.sessionTypes) for (const s of st.sessions)
+          if (occEligible(s) && !occWantedKeys.value.has(keyOf(s))) n++
+      return n
+    })
     const occClass = s => {
       const o = occOf(s); if (!o) return ''
       const free = 100 - o.occupancyPct
@@ -888,7 +941,7 @@ createApp({
     }
 
     async function loadOccupancy() {
-      if (!showOcc.value) return
+      if (!showOcc.value || blockedUntil.value) return
       const gen = occGen
       const todo = []
       for (const t of filteredTheaters.value)
@@ -896,14 +949,14 @@ createApp({
           for (const s of st.sessions) {
             const o = occ[keyOf(s)]
             const failed = occFail[keyOf(s)] && Date.now() - occFail[keyOf(s)] < 60000
-            if (occEligible(s) && !failed && (!o || Date.now() - o.t > 50000)) todo.push(keyOf(s))
+            if (occWantedKeys.value.has(keyOf(s)) && !failed && (!o || Date.now() - o.t > 150000)) todo.push(keyOf(s))
           }
       const chunks = []
       for (let i = 0; i < todo.length; i += 12) chunks.push(todo.slice(i, i + 12))
 
       // 3 requests in flight; each chunk paints as soon as it lands.
       async function worker() {
-        while (chunks.length && gen === occGen && showOcc.value) {
+        while (chunks.length && gen === occGen && showOcc.value && !blockedUntil.value) {
           const keys = chunks.shift()
           try {
             const res = await apiGet('/ocupacao?' + keys.map(k => 's=' + q(k)).join('&'), 0)
@@ -911,36 +964,51 @@ createApp({
               const v = res?.[k]
               if (v) { occ[k] = slim(v); delete occFail[k] } else occFail[k] = Date.now()
             }
-          } catch {   // occupancy is a nicety; the panel still shows it
+          } catch (e) {   // occupancy is a nicety; the panel still shows it
             for (const k of keys) occFail[k] = Date.now()
+            if (e.blocked) { onBlocked(e); return }
           }
         }
       }
       await Promise.all([worker(), worker(), worker()])
     }
     async function loadPrices() {
+      if (blockedUntil.value) return
       const gen = occGen
-      const todo = []
+      // One request per price table: sessions of the same cinema, session type and listing
+      // price share it. Opening a session fetches its own table and corrects its pill.
+      const groups = new Map()
       for (const t of filteredTheaters.value)
         for (const st of t.sessionTypes)
           for (const s of st.sessions) {
-            const k = keyOf(s), p = prices[k]
-            const failed = priceFail[k] && Date.now() - priceFail[k] < 60000
-            if (priceEligible(s) && !failed && (!p || Date.now() - p.t > 300000)) todo.push(k)
+            if (!priceEligible(s)) continue
+            const gk = `${t.id}|${st.type.join()}|${s.price}`
+            if (!groups.has(gk)) groups.set(gk, [])
+            groups.get(gk).push(keyOf(s))
           }
+      const todo = []                                    // [representative key, all keys of the group]
+      for (const keys of groups.values()) {
+        const fresh = keys.find(k => prices[k] && Date.now() - prices[k].t < 300000)
+        if (fresh) { for (const k of keys) if (!prices[k]) prices[k] = { ...prices[fresh] }; continue }
+        const rep = keys.find(k => !(priceFail[k] && Date.now() - priceFail[k] < 60000))
+        if (rep) todo.push([rep, keys])
+      }
       const chunks = []
       for (let i = 0; i < todo.length; i += 12) chunks.push(todo.slice(i, i + 12))
       async function worker() {
-        while (chunks.length && gen === occGen) {
-          const keys = chunks.shift()
+        while (chunks.length && gen === occGen && !blockedUntil.value) {
+          const chunk = chunks.shift()
           try {
-            const res = await apiGet('/precos?' + keys.map(k => 's=' + q(k)).join('&'), 0)
-            for (const k of keys) {
-              const v = res?.[k]
-              if (v) { prices[k] = { ...v, t: Date.now() }; delete priceFail[k] } else priceFail[k] = Date.now()
+            const res = await apiGet('/precos?' + chunk.map(([rep]) => 's=' + q(rep)).join('&'), 0)
+            for (const [rep, keys] of chunk) {
+              const v = res?.[rep]
+              for (const k of keys) {
+                if (v) { prices[k] = { ...v, t: Date.now() }; delete priceFail[k] } else priceFail[k] = Date.now()
+              }
             }
-          } catch {
-            for (const k of keys) priceFail[k] = Date.now()
+          } catch (e) {
+            for (const [, keys] of chunk) for (const k of keys) priceFail[k] = Date.now()
+            if (e.blocked) { onBlocked(e); return }
           }
         }
       }
@@ -948,7 +1016,7 @@ createApp({
     }
 
     let occTimer = null
-    watch([filteredTheaters, showOcc], () => {
+    watch([filteredTheaters, showOcc, occWantedKeys], () => {
       clearTimeout(occTimer)
       occTimer = setTimeout(() => { loadPrices(); loadOccupancy() }, 120)
     })
@@ -1018,15 +1086,17 @@ createApp({
       prefetchTimer = setTimeout(() => {
         apiGet(`/sessoes/${q(m.id)}/datas?cidade=${q(city.value)}`).catch(() => {})
         apiGet(`/sessoes/${q(m.id)}?cidade=${q(city.value)}`).catch(() => {})
-      }, 80)
+      }, 300)
     }
     function prefetchSession(s) {
       if (!s.enabled || !s.defaultSector) return
       clearTimeout(prefetchTimer)
       prefetchTimer = setTimeout(() => {
+        if (blockedUntil.value) return
+        if (showOcc.value && occEligible(s)) occExtra.add(keyOf(s))      // its occupancy joins the list
         apiGet(`/assentos/${s.id}/${s.defaultSector}`).catch(() => {})
         apiGet(`/tickets/${s.id}/${s.defaultSector}`).catch(() => {})
-      }, 120)
+      }, 300)
     }
 
     // ── Navigation (state <-> URL hash) ───────────────────────────
@@ -1054,7 +1124,7 @@ createApp({
     }
 
     function resetMovie() {
-      sessGen++; occGen++
+      sessGen++; occGen++; occAll.value = false; occExtra.clear()
       selectedMovie.value = null; sessions.value = null; dates.value = []
       selectedDate.value = null; movieNotInCity.value = false
       sessionsLoading.value = false; moviePushed = false
@@ -1063,7 +1133,7 @@ createApp({
 
     async function loadMovie(movie, date = null) {
       const gen = ++sessGen
-      occGen++
+      occGen++; occAll.value = false; occExtra.clear()
       selectedMovie.value  = movie
       sessions.value       = null; dates.value = []; selectedDate.value = null
       movieNotInCity.value = false
@@ -1315,6 +1385,7 @@ createApp({
       dates, selectedDate, sessions, theaterFilter, typeFilter, period, hidePast, showOcc,
       isToday, sessionTypes, hiddenPastCount, hasActiveFilters, filteredTheaters,
       occOf, occFail, keyOf, occEligible, occClass, pillLabel, priceOf, priceFail, priceEligible,
+      blockedUntil, blockedAt, occWantedKeys, occHidden, occAll, OCC_AHEAD,
       panel, closeEl, roomName, map, freeByType, bigClass, ticketGroups,
       movieHref, goMovie, goBack, goHome, selectDate, toggleType, clearFilters,
       onStateChange, onCityChange, openFirstResult,
