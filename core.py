@@ -17,7 +17,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -36,6 +36,26 @@ TTL = {
     "cities":   86400,  # 24h — cities almost never change
     "theaters":  3600,  # 1h  — theater list is stable
 }
+
+LOCAL_TZ = timezone(timedelta(hours=-3))   # Fortaleza
+
+# ingresso.com publishes the next cinema week (Thu→Wed) between Monday ~20h and
+# Wednesday ~13h local time (measured with tools/watch_schedule.py). Inside that
+# window schedules change often, so they are cached for less time.
+PUBLISH_START = (0, 20)    # (weekday, hour): Monday 20h
+PUBLISH_END   = (2, 13)    # Wednesday 13h
+SESSIONS_TTL_PUBLISH = 300
+
+
+def in_publish_window(now: datetime | None = None) -> bool:
+    now = now or datetime.now(LOCAL_TZ)
+    minute = now.weekday() * 1440 + now.hour * 60 + now.minute
+    return PUBLISH_START[0] * 1440 + PUBLISH_START[1] * 60 <= minute \
+        < PUBLISH_END[0] * 1440 + PUBLISH_END[1] * 60
+
+
+def sessions_ttl(now: datetime | None = None) -> int:
+    return SESSIONS_TTL_PUBLISH if in_publish_window(now) else TTL["sessions"]
 
 
 class APIError(Exception):
@@ -315,7 +335,7 @@ def api_session_dates(movie_id: str, city_id: int = CITY_ID):
     return fetch(
         f"{CONTENT_API}/sessions/city/{city_id}/event/{movie_id}/dates/partnership/{PARTNERSHIP}",
         cache_key=f"dates_{movie_id}_{city_id}",
-        ttl=TTL["sessions"],
+        ttl=sessions_ttl(),
         stale=3600,
     )
 
@@ -324,7 +344,7 @@ def api_sessions(movie_id: str, date_str: str, city_id: int = CITY_ID):
         f"{CONTENT_API}/sessions/city/{city_id}/event/{movie_id}/partnership/{PARTNERSHIP}/groupBy/sessionType",
         params={"date": date_str},
         cache_key=f"sessions_{movie_id}_{city_id}_{date_str}",
-        ttl=TTL["sessions"],
+        ttl=sessions_ttl(),
         stale=3600,
         schema="sessions",
     )
@@ -365,7 +385,7 @@ def api_sessions_by_theater(theater_id: str, date_str: str, city_id: int = CITY_
         f"{CONTENT_API}/sessions/city/{city_id}/theater/{theater_id}/partnership/{PARTNERSHIP}/groupBy/sessionType",
         params={"date": date_str},
         cache_key=f"theater_sessions_{theater_id}_{city_id}_{date_str}",
-        ttl=TTL["sessions"],
+        ttl=sessions_ttl(),
         stale=3600,
         schema="theater_sessions",
     )
@@ -403,7 +423,7 @@ def api_city_scan(city_id: int) -> dict:
     from `ids` doesn't prove a movie isn't showing there.
     """
     return cached(
-        f"city_scan_{city_id}", TTL["sessions"],
+        f"city_scan_{city_id}", sessions_ttl(),
         lambda: _scan_city(city_id), stale=6 * 3600,
     )
 

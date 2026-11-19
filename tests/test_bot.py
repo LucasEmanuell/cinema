@@ -1,6 +1,6 @@
 """test_bot.py — state, formatting, handlers and jobs of bot.py (Telegram faked, API patched)."""
 
-from datetime import datetime
+from datetime import date, datetime
 from unittest.mock import patch
 
 import pytest
@@ -97,12 +97,27 @@ def test_chunk_respects_limit():
 
 
 def test_digest_due():
-    thu_10 = datetime.fromisoformat("2026-11-19T10:00:00-03:00")
-    thu_08 = datetime.fromisoformat("2026-11-19T08:00:00-03:00")
-    wed = datetime.fromisoformat("2026-11-18T10:00:00-03:00")
-    assert bot.digest_due(thu_10, None)
-    assert not bot.digest_due(thu_10, bot.digest_key(thu_10.date()))
-    assert not bot.digest_due(thu_08, None) and not bot.digest_due(wed, None)
+    wed_14 = datetime.fromisoformat("2026-11-18T14:00:00-03:00")
+    wed_12 = datetime.fromisoformat("2026-11-18T12:00:00-03:00")
+    thu = datetime.fromisoformat("2026-11-19T10:00:00-03:00")
+    assert bot.digest_due(wed_14, None)
+    assert not bot.digest_due(wed_14, bot.digest_key(wed_14.date()))
+    assert not bot.digest_due(wed_12, None) and not bot.digest_due(thu, None)
+
+
+def test_week_start_is_next_thursday():
+    assert bot.week_start(date(2026, 11, 18)) == date(2026, 11, 19)   # Wed → next day
+    assert bot.week_start(date(2026, 11, 19)) == date(2026, 11, 19)   # Thu → itself
+    assert bot.week_start(date(2026, 11, 20)) == date(2026, 11, 26)   # Fri → next Thu
+
+
+def test_check_interval_faster_in_publish_window():
+    at = datetime.fromisoformat
+    assert bot.check_interval(at("2026-11-16T21:00:00-03:00")) == bot.CHECK_EVERY_PUBLISH
+    assert bot.check_interval(at("2026-11-18T12:59:00-03:00")) == bot.CHECK_EVERY_PUBLISH
+    assert bot.check_interval(at("2026-11-18T13:00:00-03:00")) == bot.CHECK_EVERY
+    assert bot.check_interval(at("2026-11-16T19:59:00-03:00")) == bot.CHECK_EVERY
+    assert bot.check_interval(at("2026-11-21T12:00:00-03:00")) == bot.CHECK_EVERY
 
 
 def test_watch_changes():
@@ -197,10 +212,13 @@ def test_watch_job_notifies_once(st, tg):
 
 def test_digest_sends_once_per_week(st, tg):
     st.toggle_fav(1, "T")
-    thu = datetime.fromisoformat("2026-11-19T10:00:00-03:00")
+    wed = datetime.fromisoformat("2026-11-18T14:00:00-03:00")
     day = {"movies": [{"id": "1", "title": "A"}]}
     with patch("core.api_theaters", return_value=[{"id": "T", "name": "Cine"}]), \
-         patch("core.api_sessions_by_theater", return_value=day):
-        bot.job_digest(tg, st, thu)
-        bot.job_digest(tg, st, thu)
+         patch("core.api_sessions_by_theater", return_value=day) as sess, \
+         patch.object(bot, "week_report_blocks", return_value=["x"]) as rep:
+        bot.job_digest(tg, st, wed)
+        bot.job_digest(tg, st, wed)
     assert len(tg.sent) == 1 and "Nova semana" in tg.sent[0][1]
+    assert sess.call_args.args[1] == "2026-11-19"          # next Thursday, not today
+    assert rep.call_args.args[0] == date(2026, 11, 19)
