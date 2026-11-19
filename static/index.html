@@ -248,11 +248,20 @@
     .filter-note { font-size: 13px; color: var(--muted); margin: 6px 0 14px; }
     .link-btn { background: none; border: none; padding: 0; margin-left: 6px; font-size: inherit; color: var(--text); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 
-    .theater { border-top: 1px solid var(--border); padding: 18px 0 6px; }
-    .theater-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-    .theater-name  { font-weight: 600; font-size: 15px; }
-    .theater-count { font-size: 13px; color: var(--muted); white-space: nowrap; }
-    .theater-neigh { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+    .theater { border-top: 1px solid var(--border); padding: 22px 0 8px; }
+    .theater-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    .theater-name  { font-weight: 600; font-size: 18px; line-height: 1.25; min-width: 0; }
+    .theater-neigh { font-size: 13px; color: var(--muted); margin: 2px 0 14px; display: flex; flex-wrap: wrap; gap: 0 12px; }
+    .group-label  { font-size: 13px; font-weight: 600; color: var(--muted); margin: 28px 0 0; }
+    .group-label + .theater { border-top: 0; padding-top: 10px; }
+    .dim { opacity: .5; }
+    /* 44px hit area, 18px icon; negative margins keep the header compact */
+    .fav-btn {
+      flex: none; width: 44px; height: 44px; margin: -10px -13px -10px 0; padding: 0;
+      display: grid; place-items: center; background: none; border: none; border-radius: 8px;
+      color: var(--muted); cursor: pointer;
+    }
+    .fav-btn:hover, .fav-btn[aria-pressed="true"] { color: var(--text); }
 
     .session-group { margin-bottom: 12px; }
     .session-group:last-child { margin-bottom: 0; }
@@ -523,6 +532,9 @@
             <label class="check" v-if="isToday">
               <input type="checkbox" v-model="hidePast" /> Ocultar já iniciadas
             </label>
+            <label class="check" v-if="favIds.length">
+              <input type="checkbox" v-model="favOnly" /> Só favoritos
+            </label>
             <label class="check">
               <input type="checkbox" v-model="showOcc" /> Mostrar assentos livres
             </label>
@@ -532,16 +544,27 @@
             <button class="link-btn" @click="occAll = true">Carregar todas ({{ occHidden }})</button>
           </p>
           <p class="filter-note" v-if="hiddenPastCount && hidePast && isToday">{{ hiddenPastCount }} {{ hiddenPastCount === 1 ? "sessão já iniciada oculta" : "sessões já iniciadas ocultas" }}.</p>
-          <p class="filter-note" v-else></p>
+          <p class="filter-note" v-if="!favIds.length">Toque na estrela de um cinema para fixá-lo no topo.</p>
 
-          <section class="theater" v-for="t in filteredTheaters" :key="t.id" :style="!t.enabled ? 'opacity:.5' : ''">
+          <template v-for="(t, ti) in filteredTheaters" :key="t.id">
+          <p class="group-label" v-if="ti > 0 && !isFav(t) && isFav(filteredTheaters[ti - 1])">Outros cinemas</p>
+          <section class="theater">
             <div class="theater-head">
               <h2 class="theater-name">{{ t.name }}</h2>
-              <span class="theater-count">{{ t.count }} {{ t.count === 1 ? 'sessão' : 'sessões' }}</span>
+              <button class="fav-btn" :data-fav="t.id" :aria-pressed="isFav(t)"
+                      :aria-label="'Favoritar ' + t.name" @click="toggleFav(t)">
+                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                  <path d="M12 3.5l2.6 5.5 6 .8-4.4 4.2 1.1 6-5.3-2.9-5.3 2.9 1.1-6L3.4 9.8l6-.8z"
+                        :fill="isFav(t) ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+                </svg>
+              </button>
             </div>
-            <div class="theater-neigh">{{ t.neighborhood }}</div>
+            <div class="theater-neigh">
+              <span v-if="t.neighborhood">{{ t.neighborhood }}</span>
+              <span>{{ t.count }} {{ t.count === 1 ? 'sessão' : 'sessões' }}</span>
+            </div>
 
-            <div class="session-group" v-for="(st, i) in t.sessionTypes" :key="i">
+            <div class="session-group" :class="{ dim: !t.enabled }" v-for="(st, i) in t.sessionTypes" :key="i">
               <div class="type-label">{{ st.type.join(', ') }}</div>
               <div class="sessions-row">
                 <button
@@ -574,10 +597,11 @@
               </div>
             </div>
           </section>
+          </template>
 
           <div class="empty" v-if="filteredTheaters.length === 0">
             {{ hasActiveFilters ? 'Nenhuma sessão com esses filtros.' : 'Sem sessões disponíveis.' }}
-            <button class="btn btn-ghost" v-if="hasActiveFilters" @click="clearFilters">Limpar filtros</button>
+            <button class="btn btn-ghost" v-if="hasActiveFilters" @click="clearFilters(); favOnly = false">Limpar filtros</button>
           </div>
         </template>
 
@@ -799,6 +823,25 @@ createApp({
     watch(hidePast, v => ls.set('cinema:hidePast', v))
     watch(showOcc,  v => ls.set('cinema:showOcc', v))
 
+    // Favourite cinemas, per city, only in this browser (there is no login).
+    const cleanFavs = v => !v || typeof v !== 'object' || Array.isArray(v) ? {} :
+      Object.fromEntries(Object.entries(v).filter(([, a]) => Array.isArray(a)).map(([k, a]) => [k, a.map(String)]))
+    const favsAll = ref(cleanFavs(ls.get('cinema:favs')))
+    const favIds  = computed(() => favsAll.value[city.value] ?? [])
+    const isFav   = t => favIds.value.includes(String(t.id))
+    // A preference, not a per-movie filter: clearFilters() leaves it alone.
+    const favOnly = ref(ls.get('cinema:favOnly') ?? false)
+    watch(favOnly, v => ls.set('cinema:favOnly', v))
+    async function toggleFav(t) {
+      const id = String(t.id), cur = favIds.value
+      favsAll.value = { ...favsAll.value, [city.value]: cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id] }
+      ls.set('cinema:favs', favsAll.value)
+      await nextTick()                    // the section just moved: keep focus and keep it in view
+      const btn = document.querySelector(`[data-fav="${id}"]`)
+      btn?.focus({ preventScroll: true })
+      btn?.closest('.theater')?.scrollIntoView({ block: 'nearest' })
+    }
+
     const now = ref(Date.now())
     setInterval(() => { now.value = Date.now() }, 30000)
 
@@ -847,7 +890,17 @@ createApp({
     })
 
     const hasActiveFilters = computed(() =>
-      !!theaterFilter.value || !!typeFilter.value.length || !!period.value)
+      !!theaterFilter.value || !!typeFilter.value.length || !!period.value || (favOnly.value && !!favIds.value.length))
+
+    // Earliest session that can still be bought (not started, not sold out), or null.
+    // Started sessions never pull a cinema up. Date strings share the -03:00 offset, so they compare as text.
+    const upcomingAt = list => list.reduce((m, s) =>
+      !s._past && s.enabled && (m === null || s.date.localDate < m) ? s.date.localDate : m, null)
+    // Stable sort by that time; no upcoming session goes last and keeps its original order.
+    const byUpcoming = (a, b) => {
+      const x = a.at ?? '\uffff', y = b.at ?? '\uffff'
+      return x < y ? -1 : x > y ? 1 : 0
+    }
 
     const filteredTheaters = computed(() => {
       const all  = sessions.value?.theaters ?? []
@@ -864,14 +917,16 @@ createApp({
             .map(s => ({ ...s, _past: isPast(s) }))
             .filter(s => inPeriod(s) && !(hide && s._past))
           if (!list.length) continue
-          groups.push({ ...st, sessions: list })
+          groups.push({ ...st, sessions: list, at: upcomingAt(list) })
           count += list.length
           for (const s of list)
             if (!s._past && s.enabled && (nextId === null || s.date.localDate < nextId.at)) nextId = { id: s.id, at: s.date.localDate }
         }
-        if (groups.length) out.push({ ...t, sessionTypes: groups, count, nextId: nextId?.id ?? null })
+        if (groups.length) out.push({ ...t, sessionTypes: groups.sort(byUpcoming), count, nextId: nextId?.id ?? null, at: nextId?.at ?? null })
       }
-      return out
+      const sorted = out.sort(byUpcoming)                    // earliest first; favourites bypass it below
+      const fav = sorted.filter(isFav)
+      return favOnly.value && fav.length ? fav : [...fav, ...sorted.filter(t => !isFav(t))]
     })
 
     function toggleType(t) {
@@ -911,7 +966,8 @@ createApp({
       for (const t of filteredTheaters.value) {
         const next = t.sessionTypes.flatMap(st => st.sessions).filter(occEligible)
           .sort((a, b) => (a.date.localDate < b.date.localDate ? -1 : 1))
-        next.forEach((s, i) => { if (occAll.value || i < OCC_AHEAD || occExtra.has(keyOf(s))) keys.add(keyOf(s)) })
+        const all = occAll.value || isFav(t)                 // favourites are few and the ones you look at
+        next.forEach((s, i) => { if (all || i < OCC_AHEAD || occExtra.has(keyOf(s))) keys.add(keyOf(s)) })
       }
       return keys
     })
@@ -1383,6 +1439,7 @@ createApp({
       search, movieFilter, searchEl,
       selectedMovie, movieNotInCity,
       dates, selectedDate, sessions, theaterFilter, typeFilter, period, hidePast, showOcc,
+      favIds, favOnly, isFav, toggleFav,
       isToday, sessionTypes, hiddenPastCount, hasActiveFilters, filteredTheaters,
       occOf, occFail, keyOf, occEligible, occClass, pillLabel, priceOf, priceFail, priceEligible,
       blockedUntil, blockedAt, occWantedKeys, occHidden, occAll, OCC_AHEAD,
