@@ -5,10 +5,11 @@ __pycache__/
 .venv/
 venv/
 
-# Cache
-~/.cache/cinema-fortaleza/
+# Cache (o cache do app fica em ~/.cache, fora do repositório)
 *.json
 !tests/fixtures/*.json
+.pytest_cache/
+.coverage
 
 # Claude
 .claude/
@@ -23,8 +24,11 @@ venv/
 .DS_Store
 Thumbs.db
 
-# Coleta de programação (dados, não código)
-tools/*.db
-tools/*.db-*
-tools/*.lock
-bot_state.db*
+# Segredos e estado local (bot, coletor de programação)
+.env
+.env.*
+!.env.example
+*.log
+*.db
+*.db-*
+*.db.lock

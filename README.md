@@ -182,7 +182,9 @@ Features:
 - Seletor de estado + cidade (qualquer cidade do Brasil); a última escolha fica salva
 - Grid de filmes com pôster, busca tolerante a typos (`/` foca o campo; Enter abre o melhor resultado) e filtro em cartaz / pré-venda
 - **Assentos livres direto na lista de sessões** (barra + "N livres", carregados em lote)
-- **Painel da sessão** ao clicar: assentos livres, mapa da sala, preços (inteira/meia) e aviso da taxa da meia
+- **Preço "a partir de"** em cada sessão: o menor entre Inteira e Meia (taxa incluída), da tabela real de ingressos
+- **Painel da sessão** ao clicar: assentos livres, mapa da sala, preços (Inteira e Meia primeiro; convênios e assinaturas, como UNIQUE, separados) e aviso da taxa da meia
+- Link "Letterboxd" ao lado do título (abre a busca pelo título original e ano)
 - Filtros por data, cinema, tipo (Dublado, 3D, IMAX…) e período; "próxima sessão" destacada; sessões já iniciadas ocultas
 - URLs compartilháveis (`#c=Fortaleza&f=<filme>&d=<data>&s=<sessão>:<seção>`) e botão voltar funcionando
 - Rápido: lista de filmes pinta do `localStorage` e revalida; prefetch ao passar o mouse; Vue local (sem CDN)
@@ -345,18 +347,18 @@ pip install -r requirements.txt
 python3 -m pytest -v
 ```
 
-156 testes, nenhuma chamada de rede — tudo é executado com fixtures salvas em `tests/fixtures/`.
+Nenhuma chamada de rede — tudo é executado com fixtures salvas em `tests/fixtures/`.
 
 ### Estrutura
 
 ```
 tests/
 ├── conftest.py          ← fixtures compartilhadas (carrega os JSONs)
-├── test_core.py         ← testa helpers e cache (68 testes)
-├── test_app.py          ← testa rotas FastAPI (29 testes)
-├── test_resilience.py   ← cache em camadas, erros HTTP, /ocupacao (20 testes)
-├── test_bot.py          ← estado SQLite, handlers, jobs de aviso (20 testes)
-├── test_events.py       ← classificação por título/tag e relatório semanal (19 testes)
+├── test_core.py         ← testa helpers e cache
+├── test_app.py          ← testa rotas FastAPI
+├── test_resilience.py   ← cache em camadas, erros HTTP, /ocupacao
+├── test_bot.py          ← estado SQLite, handlers, jobs de aviso
+├── test_events.py       ← classificação por título/tag e relatório semanal
 └── fixtures/
     ├── movies.json      ← 3 filmes reais do cityId=36
     ├── sessions.json    ← 1 cinema, 1 sessionType, 2 sessões
@@ -369,9 +371,9 @@ tests/
 
 | Módulo | O que cobre |
 |---|---|
-| `test_core.py` | `normalize`, `find_movie`, `resolve_date`, `find_city`, `resolve_city`, `parse_tickets`, `check_schema` (log de mudanças de formato), cache (hit/miss/expirado) |
+| `test_core.py` | `normalize`, `find_movie`, `resolve_date`, `find_city`, `resolve_city`, `parse_tickets`, `general_price`, `check_schema` (log de mudanças de formato), cache (hit/miss/expirado) |
 | `test_resilience.py` | `fetch()` (5xx levanta `APIError`, 204/404 viram vazio, erro não é cacheado), cache em memória + disco, stale-while-revalidate e fallback, deduplicação de requisições concorrentes, scan de cidades grandes, `/ocupacao`, `?atualizar=1`, gzip e `Cache-Control` |
-| `test_app.py` | Todos os endpoints principais, status codes (200/404/503), filtros `?cinema=` `?hora=` `?cidade=`, `meia_fee_warning`, cálculo de ocupação, auto-advance de data |
+| `test_app.py` | Todos os endpoints principais, status codes (200/404/503), filtros `?cinema=` `?hora=` `?cidade=`, `/precos`, `meia_fee_warning`, cálculo de ocupação, auto-advance de data |
 
 ### O que não é testado (intencionalmente)
 
@@ -390,7 +392,7 @@ Para comprar, use o site ou app da ingresso.com ou a bilheteria do cinema.
 
 ## Limitações conhecidas
 
-- **`session.price` na saída padrão** pode ser o preço de SuperSeat quando a sala tem recliners — UCI Iguatemi é o caso conhecido. Use `--precos` ou `GET /tickets` para o breakdown real. O frontend mostra "até R$ X" na lista e o preço exato no painel da sessão.
+- **`session.price` (preço da listagem de sessões)** não é confiável: costuma ser o teto da sala e, em alguns cinemas, passa da tabela real (UCI Iguatemi: R$ 4,56 acima). Use `--precos` ou `GET /tickets` / `GET /precos` para o valor real. O frontend já usa `/precos` ("a partir de") na lista e a tabela completa no painel da sessão.
 - **Primeira consulta do dia numa cidade** leva alguns segundos (fan-out de ~60 requisições ao ingresso.com); as seguintes saem do cache. Num CLI, que é um processo curto, a atualização em background não termina, então o aquecimento fica por conta da API/servidor.
 - **Sessões de hoje** às vezes retornam vazio se o horário já passou — o projeto avança automaticamente para a próxima data disponível.
 - **Eventos e relançamentos** não têm flag na API (`isReexhibition` vem sempre falso): `events.py` os reconhece pelo título e pelas `tags`. Uma série nova com outro nome aparece como estreia comum até ganhar um padrão.
