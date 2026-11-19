@@ -131,6 +131,8 @@ def get_filmes(cidade: str | None = Query(None, description="Cidade (padrão: Fo
         {
             "id":            m["id"],
             "title":         m["title"],
+            "originalTitle": m.get("originalTitle") or None,
+            "releaseYear":   m.get("releaseYear") or None,
             "urlKey":        m.get("urlKey"),
             "contentRating": m.get("contentRating"),
             "duration":      m.get("duration"),
