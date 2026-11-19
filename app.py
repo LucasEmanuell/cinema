@@ -29,6 +29,7 @@ _STATIC = Path(__file__).parent / "static"
 from core import (
     APIError, CITY_ID,
     api_movies, api_movies_in_city, api_session_dates, api_sessions,
+    APIBlocked, blocked_for,
     api_tickets, api_seats, api_states, find_movie, normalize,
     resolve_date, resolve_city, parse_tickets, general_price,
 )
@@ -85,6 +86,12 @@ async def cache_headers(request: Request, call_next):
 
 
 def _api_error(e: APIError):
+    if isinstance(e, APIBlocked):
+        raise HTTPException(
+            status_code=503,
+            detail="O ingresso.com limitou o acesso por um momento. Tente de novo em alguns minutos.",
+            headers={"Retry-After": str(max(blocked_for(), 60))},
+        )
     raise HTTPException(status_code=503, detail=f"Erro ao contactar ingresso.com: {e}")
 
 def _resolve_city(cidade: str | None) -> tuple[int, str]:
@@ -319,6 +326,19 @@ def get_assentos(
     return JSONResponse(response, headers={"Cache-Control": "no-cache"} if atualizar else None)
 
 
+_BLOCKED = object()
+
+
+def _run_batch(pairs: list[tuple[str, str]], one) -> dict:
+    """Run `one` over the pairs (few in parallel). If ingresso.com blocked every one of
+    them, answer 503 with Retry-After so the page can pause instead of retrying."""
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(one, pairs))
+    if results and all(r is _BLOCKED for r in results):
+        _api_error(APIBlocked("blocked"))
+    return {f"{sid}:{sec}": (None if r is _BLOCKED else r) for (sid, sec), r in zip(pairs, results)}
+
+
 def _session_pairs(items: list[str]) -> list[tuple[str, str]]:
     pairs = []
     for item in items[:80]:
@@ -341,6 +361,8 @@ def get_precos(s: list[str] = Query(..., description="session_id:section_id (rep
     def one(pair):
         try:
             parsed = parse_tickets(api_tickets(*pair))
+        except APIBlocked:
+            return _BLOCKED
         except APIError:
             return None
         price = general_price(parsed)
@@ -350,9 +372,7 @@ def get_precos(s: list[str] = Query(..., description="session_id:section_id (rep
             "meia":    parsed["meia"]["total"] if parsed["meia"] else None,
         }
 
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        results = list(pool.map(one, pairs))
-    return {f"{sid}:{sec}": r for (sid, sec), r in zip(pairs, results)}
+    return _run_batch(pairs, one)
 
 
 @app.get("/ocupacao", summary="Ocupação de várias sessões de uma vez")
@@ -366,10 +386,10 @@ def get_ocupacao(s: list[str] = Query(..., description="session_id:section_id (r
     def one(pair):
         try:
             data = api_seats(*pair)
+        except APIBlocked:
+            return _BLOCKED
         except APIError:
             return None
         return _occupancy(data) if data else None
 
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        results = list(pool.map(one, pairs))
-    return {f"{sid}:{sec}": r for (sid, sec), r in zip(pairs, results)}
+    return _run_batch(pairs, one)
