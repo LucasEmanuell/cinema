@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#0d0d12" />
-  <title>cinema br — sessões, preços e assentos livres</title>
+  <meta name="theme-color" content="#0e0e10" />
+  <title>Cinema BR: sessões, preços e assentos livres</title>
   <link rel="modulepreload" href="/static/vue.3.5.13.esm-browser.prod.js" />
   <script>
     // Start the first network requests before Vue has even loaded.
@@ -27,17 +27,21 @@
   </script>
   <style>
     :root {
-      --bg:       #0d0d12;
-      --surface:  #13131c;
-      --surface2: #1a1a26;
-      --border:   #2a2a40;
-      --primary:  #8b7cf8;
-      --primary2: #6b5cd8;
-      --text:     #e8e8f8;
-      --muted:    #9a9ac4;
-      --green:    #4ade80;
-      --yellow:   #fbbf24;
-      --red:      #f87171;
+      /* Cinza neutro de sala escura. Cor viva só para dado: ocupação e erro. */
+      --bg:       #0e0e10;
+      --surface:  #161618;
+      --surface2: #1e1e21;
+      --hover:    #26262a;
+      --border:   #2c2c30;
+      --text:     #ececec;
+      --muted:    #9b9ba1;
+      --accent:   #ececec;   /* estado selecionado: invertido, sem matiz */
+      --on-accent:#0e0e10;
+      --green:    #4cc38a;
+      --yellow:   #e3b341;
+      --red:      #ef6b6b;
+      --seat-taken:   #323237;
+      --seat-special: #d4d4d8;
       --radius:   10px;
     }
 
@@ -50,13 +54,15 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
       font-size: 15px;
       line-height: 1.5;
-      min-height: 100vh;
+      min-height: 100dvh;
     }
     body.no-scroll { overflow: hidden; }
 
     button { font: inherit; color: inherit; }
     a { color: inherit; text-decoration: none; }
-    :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+    :focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+    h1, h2 { text-wrap: balance; }
+    p { text-wrap: pretty; }
 
     .sr-only {
       position: absolute; width: 1px; height: 1px; overflow: hidden;
@@ -79,7 +85,6 @@
       font-size: 17px; font-weight: 700; letter-spacing: -0.4px; white-space: nowrap;
       background: none; border: none; cursor: pointer;
     }
-    .brand em { color: var(--primary); font-style: normal; }
 
     .city-bar { display: flex; align-items: center; gap: 8px; margin-left: auto; }
     .city-bar label { font-size: 12px; color: var(--muted); white-space: nowrap; }
@@ -95,7 +100,7 @@
       cursor: pointer;
       appearance: none;
       -webkit-appearance: none;
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239a9ac4' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239b9ba1' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
       background-repeat: no-repeat;
       background-position: right 9px center;
     }
@@ -122,8 +127,8 @@
     }
     .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
     .btn-ghost:hover { background: var(--surface2); color: var(--text); }
-    .btn-primary { background: var(--primary2); color: #fff; }
-    .btn-primary:hover { background: var(--primary); }
+    .btn-primary { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+    .btn-primary:hover { background: #fff; }
 
     /* ── Main ────────────────────────────────────────────────────── */
     main { max-width: 1040px; margin: 0 auto; padding: 24px 24px 64px; }
@@ -156,7 +161,7 @@
     .loading-inline { display: flex; align-items: center; gap: 10px; padding: 24px 0; color: var(--muted); font-size: 14px; }
     .spinner {
       width: 18px; height: 18px; border: 2px solid var(--border);
-      border-top-color: var(--primary); border-radius: 50%; animation: spin .65s linear infinite;
+      border-top-color: var(--text); border-radius: 50%; animation: spin .65s linear infinite;
     }
 
     /* ── Toolbar (search / filters) ─────────────────────────────── */
@@ -170,9 +175,9 @@
     }
     .seg button + button { border-left: 1px solid var(--border); }
     .seg button:hover { color: var(--text); }
-    .seg button[aria-pressed="true"] { background: var(--primary2); color: #fff; }
+    .seg button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); font-weight: 600; }
 
-    .section-label { font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+    .section-label { font-size: 13px; color: var(--muted); margin-bottom: 14px; display: flex; flex-wrap: wrap; gap: 4px 14px; }
 
     /* ── Movie grid ──────────────────────────────────────────────── */
     .movies-grid {
@@ -186,34 +191,32 @@
       border-radius: var(--radius);
       overflow: hidden;
       display: flex; flex-direction: column;
-      transition: border-color .15s, transform .12s;
+      transition: border-color .15s;
     }
-    .movie-card:hover, .movie-card:focus-visible { border-color: var(--primary); transform: translateY(-2px); }
+    .movie-card:hover, .movie-card:focus-visible { border-color: var(--muted); }
     .poster {
       aspect-ratio: 2 / 3; width: 100%; display: block; object-fit: cover;
-      background: linear-gradient(160deg, var(--surface2), var(--bg));
+      background: var(--surface2);
     }
     .poster-fallback {
       aspect-ratio: 2 / 3; display: flex; align-items: center; justify-content: center;
       padding: 12px; text-align: center; font-weight: 600; color: var(--muted);
-      background: linear-gradient(160deg, var(--surface2), var(--bg));
+      background: var(--surface2);
     }
     .movie-info { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 7px; flex: 1; }
     .movie-title { font-weight: 600; font-size: 14px; line-height: 1.3; }
 
     .chips { display: flex; flex-wrap: wrap; gap: 5px; }
     .chip {
-      font-size: 11px; padding: 2px 7px; border-radius: 4px;
+      font-size: 12px; padding: 2px 7px; border-radius: 4px; font-variant-numeric: tabular-nums;
       background: var(--surface2); color: var(--muted); border: 1px solid var(--border); white-space: nowrap;
     }
-    .chip-r       { color: var(--yellow);  border-color: rgba(251,191,36,.25); }
-    .chip-p       { color: var(--primary); border-color: rgba(139,124,248,.3); }
-    .chip-presale { color: var(--green);   border-color: rgba(74,222,128,.3); }
+    .chip-presale { color: var(--text); border-color: var(--muted); }
 
     /* ── Sessions view ───────────────────────────────────────────── */
     .sessions-top { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
     .sessions-title { font-size: 20px; font-weight: 700; line-height: 1.2; }
-    .sessions-meta  { font-size: 13px; color: var(--muted); margin-top: 3px; }
+    .sessions-meta  { font-size: 13px; color: var(--muted); margin-top: 3px; display: flex; flex-wrap: wrap; gap: 2px 12px; }
 
     .date-tabs { display: flex; gap: 6px; margin-bottom: 14px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
     .date-tab {
@@ -221,9 +224,9 @@
       background: var(--surface); color: var(--muted); font-size: 13px; cursor: pointer;
       line-height: 1.25; text-align: center; transition: all .12s;
     }
-    .date-tab:hover  { border-color: var(--primary); color: var(--text); }
-    .date-tab[aria-pressed="true"] { background: var(--primary2); border-color: var(--primary); color: #fff; }
-    .date-sub { display: block; font-size: 10px; opacity: .75; text-transform: capitalize; }
+    .date-tab:hover  { border-color: var(--muted); color: var(--text); }
+    .date-tab[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+    .date-sub { display: block; font-size: 12px; opacity: .75; text-transform: capitalize; }
 
     .filters { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; margin-bottom: 8px; }
     .type-chip {
@@ -231,25 +234,21 @@
       background: var(--surface); border: 1px solid var(--border); color: var(--muted);
     }
     .type-chip:hover { color: var(--text); }
-    .type-chip[aria-pressed="true"] { background: rgba(139,124,248,.18); border-color: var(--primary); color: var(--text); }
+    .type-chip[aria-pressed="true"] { background: var(--hover); border-color: var(--text); color: var(--text); }
     .check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; }
-    .check input { accent-color: var(--primary2); width: 16px; height: 16px; }
+    .check input { accent-color: var(--accent); width: 16px; height: 16px; }
     .filter-note { font-size: 12px; color: var(--muted); margin: 6px 0 14px; }
 
-    .theater {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 16px; margin-bottom: 10px;
-    }
+    .theater { border-top: 1px solid var(--border); padding: 18px 0 6px; }
     .theater-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
     .theater-name  { font-weight: 600; font-size: 15px; }
-    .theater-count { font-size: 12px; color: var(--muted); white-space: nowrap; }
-    .theater-neigh { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
+    .theater-count { font-size: 13px; color: var(--muted); white-space: nowrap; }
+    .theater-neigh { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
 
     .session-group { margin-bottom: 12px; }
     .session-group:last-child { margin-bottom: 0; }
     .type-label {
-      font-size: 11px; font-weight: 600; letter-spacing: .5px; color: var(--primary);
-      text-transform: uppercase; margin-bottom: 7px;
+      font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 7px;
     }
     .sessions-row { display: flex; flex-wrap: wrap; gap: 8px; }
 
@@ -259,19 +258,19 @@
       display: flex; flex-direction: column; align-items: center; gap: 1px;
       transition: border-color .12s, background .12s;
     }
-    .session-pill:hover { border-color: var(--primary); background: #20203a; }
-    .session-pill.next  { border-color: rgba(139,124,248,.6); }
+    .session-pill:hover { border-color: var(--muted); background: var(--hover); }
+    .session-pill.next  { border-color: var(--text); }
     .session-pill.past  { opacity: .45; }
     .session-pill.off   { opacity: .4; cursor: default; }
-    .s-time  { font-size: 17px; font-weight: 700; line-height: 1.2; }
-    .s-price { font-size: 11px; color: var(--muted); }
-    .s-flag  { font-size: 10px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: var(--red); }
-    .s-flag.next-flag { color: var(--primary); }
+    .s-time  { font-size: 17px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
+    .s-price { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .s-flag  { font-size: 12px; font-weight: 600; color: var(--red); }
+    .s-flag.next-flag { color: var(--text); }
 
     .occ { width: 100%; margin-top: 4px; }
-    .occ-bar { display: block; height: 4px; border-radius: 2px; background: #2a2a40; overflow: hidden; }
+    .occ-bar { display: block; height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; }
     .occ-bar i { display: block; height: 100%; border-radius: 2px; }
-    .occ-txt { display: block; font-size: 11px; margin-top: 3px; font-variant-numeric: tabular-nums; }
+    .occ-txt { display: block; font-size: 12px; margin-top: 3px; font-variant-numeric: tabular-nums; }
     .occ-ok   i { background: var(--green); }  .occ-ok   .occ-txt { color: var(--green); }
     .occ-mid  i { background: var(--yellow); } .occ-mid  .occ-txt { color: var(--yellow); }
     .occ-low  i { background: var(--red); }    .occ-low  .occ-txt { color: var(--red); }
@@ -295,42 +294,41 @@
     }
     .panel-head { padding: 16px 18px 12px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: flex-start; }
     .panel-head h2 { font-size: 17px; line-height: 1.25; }
-    .panel-sub { font-size: 13px; color: var(--muted); margin-top: 2px; }
-    .panel-close { margin-left: auto; flex: none; width: 36px; height: 36px; padding: 0; font-size: 18px; line-height: 1; }
+    .panel-sub { font-size: 13px; color: var(--muted); margin-top: 2px; display: flex; flex-wrap: wrap; gap: 0 12px; }
+    .panel-close { margin-left: auto; flex: none; width: 44px; height: 44px; padding: 0; display: grid; place-items: center; }
     .panel-body { padding: 16px 18px 28px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 18px; }
     .panel-section h3 {
-      font-size: 11px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase;
-      color: var(--muted); margin-bottom: 8px;
+      font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 8px;
     }
 
     .big-occ { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
     .big-num { font-size: 30px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
     .big-num.occ-ok { color: var(--green); } .big-num.occ-mid { color: var(--yellow); } .big-num.occ-low { color: var(--red); }
-    .big-sub { font-size: 13px; color: var(--muted); }
-    .big-bar { height: 8px; margin-top: 10px; border-radius: 4px; background: #2a2a40; overflow: hidden; }
+    .big-sub { font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 0 12px; }
+    .big-bar { height: 8px; margin-top: 10px; border-radius: 4px; background: var(--border); overflow: hidden; }
     .big-bar i { display: block; height: 100%; }
     .big-bar.occ-ok i { background: var(--green); } .big-bar.occ-mid i { background: var(--yellow); } .big-bar.occ-low i { background: var(--red); }
-    .type-counts { font-size: 12px; color: var(--muted); margin-top: 8px; }
+    .type-counts { font-size: 13px; color: var(--muted); margin-top: 8px; display: flex; flex-wrap: wrap; gap: 0 12px; }
 
     .tickets { width: 100%; border-collapse: collapse; font-size: 14px; }
     .tickets td { padding: 7px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
     .tickets tr:last-child td { border-bottom: none; }
     .t-name  { padding-right: 10px; }
-    .t-break { display: block; font-size: 12px; color: var(--muted); }
+    .t-break { display: block; font-size: 13px; color: var(--muted); }
     .t-total { text-align: right; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .fee-warn {
       font-size: 13px; border-radius: 8px; padding: 9px 12px; margin-top: 10px;
-      background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.3); color: var(--yellow);
+      background: var(--surface2); border: 1px solid var(--muted); color: var(--text);
     }
 
     .seatmap-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); padding: 10px; }
     .seatmap { display: block; margin: 0 auto; max-width: 100%; height: auto; }
     .seat-free  { fill: var(--green); }
-    .seat-taken { fill: #2c2c44; }
-    .seat-special.seat-free { fill: var(--primary); }
+    .seat-taken { fill: var(--seat-taken); }
+    .seat-special.seat-free { fill: var(--seat-special); }
     .seat-label { fill: var(--muted); font-size: 9px; text-anchor: middle; dominant-baseline: central; }
-    .screen { fill: #3a3a5c; } .screen-label { fill: var(--muted); font-size: 9px; letter-spacing: 3px; text-anchor: middle; dominant-baseline: central; }
-    .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); margin-top: 8px; }
+    .screen { fill: var(--seat-taken); } .screen-label { fill: var(--muted); font-size: 9px; text-anchor: middle; dominant-baseline: central; }
+    .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); margin-top: 8px; }
     .legend span::before { content: ''; display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; background: var(--c); }
 
     .panel-actions { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -347,10 +345,14 @@
       main         { padding: 16px 14px 64px; }
       .movies-grid { grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 10px; }
       .panel {
-        top: auto; left: 0; right: 0; width: 100%; max-height: 92vh;
+        top: auto; left: 0; right: 0; width: 100%; max-height: 92dvh;
         border-left: none; border-top: 1px solid var(--border); border-radius: 16px 16px 0 0;
         animation-name: slide-up;
       }
+    }
+    @media (pointer: coarse) {
+      .btn, .seg button, .date-tab, .type-chip, .check, select, input[type="search"] { min-height: 44px; }
+      .check input { width: 20px; height: 20px; }
     }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -361,7 +363,7 @@
 <div id="app">
 
   <header>
-    <button class="brand" @click="goHome" aria-label="cinema br — início">🎬 cinema<em>br</em></button>
+    <button class="brand" @click="goHome" aria-label="Cinema BR, início">cinema br</button>
     <div class="city-bar">
       <label for="uf">Estado</label>
       <select id="uf" class="select-state" v-model="selectedUF" @change="onStateChange" :disabled="!allStates.length">
@@ -405,10 +407,9 @@
       </div>
       <template v-else>
         <p class="section-label">
-          <strong>{{ visibleMovies.length }}</strong>
-          {{ visibleMovies.length === 1 ? 'filme' : 'filmes' }}
-          <span v-if="presaleCount && movieFilter === 'all'"> · {{ presaleCount }} em pré-venda</span>
-          <span> — {{ city }}</span>
+          <span><strong>{{ visibleMovies.length }}</strong>
+          {{ visibleMovies.length === 1 ? 'filme' : 'filmes' }} em {{ city }}</span>
+          <span v-if="presaleCount && movieFilter === 'all'">{{ presaleCount }} em pré-venda</span>
         </p>
         <div class="movies-grid">
           <a
@@ -430,9 +431,9 @@
               <div class="movie-title">{{ m.title }}</div>
               <div class="chips">
                 <span class="chip chip-presale" v-if="m.inPreSale">Pré-venda</span>
-                <span class="chip chip-r" v-if="m.contentRating">{{ m.contentRating }}</span>
+                <span class="chip" v-if="m.contentRating">{{ m.contentRating }}</span>
                 <span class="chip" v-if="m.duration">{{ m.duration }}min</span>
-                <span class="chip chip-p" v-if="m.countPlaying && !m.inPreSale">{{ m.countPlaying }} salas</span>
+                <span class="chip" v-if="m.countPlaying && !m.inPreSale">{{ m.countPlaying }} salas</span>
               </div>
             </div>
           </a>
@@ -452,8 +453,8 @@
           <h1 class="sessions-title">{{ selectedMovie.title }}</h1>
           <div class="sessions-meta">
             <span v-if="selectedMovie.contentRating">{{ selectedMovie.contentRating }}</span>
-            <span v-if="selectedMovie.duration"> · {{ selectedMovie.duration }}min</span>
-            <span> · {{ city }}</span>
+            <span v-if="selectedMovie.duration">{{ selectedMovie.duration }}min</span>
+            <span>{{ city }}</span>
           </div>
         </div>
       </div>
@@ -517,13 +518,13 @@
             <div class="theater-neigh">{{ t.neighborhood }}</div>
 
             <div class="session-group" v-for="(st, i) in t.sessionTypes" :key="i">
-              <div class="type-label">{{ st.type.join(' · ') }}</div>
+              <div class="type-label">{{ st.type.join(', ') }}</div>
               <div class="sessions-row">
                 <button
                   v-for="s in st.sessions" :key="s.id" class="session-pill"
                   :class="{ past: s._past, off: !s.enabled, next: s.id === t.nextId }"
                   :disabled="!s.enabled"
-                  :title="(s.room || '') + (s.blockMessage ? ' — ' + s.blockMessage : '')"
+                  :title="(s.room || '') + (s.blockMessage ? ': ' + s.blockMessage : '')"
                   :aria-label="pillLabel(s)"
                   @click="openSession(t, st, s, $event)"
                   @pointerenter="prefetchSession(s)" @pointerleave="cancelPrefetch" @focus="prefetchSession(s)"
@@ -570,12 +571,12 @@
           <h2 id="panel-title">{{ panel.theaterName || 'Sessão' }}</h2>
           <div class="panel-sub">
             <span v-if="selectedMovie">{{ selectedMovie.title }}</span>
-            <span v-if="panel.session"> · {{ panel.session.time }}</span>
-            <span v-if="roomName"> · {{ roomName }}</span>
-            <span v-if="panel.types"> · {{ panel.types }}</span>
+            <span v-if="panel.session">{{ panel.session.time }}</span>
+            <span v-if="roomName">{{ roomName }}</span>
+            <span v-if="panel.types">{{ panel.types }}</span>
           </div>
         </div>
-        <button class="btn btn-ghost panel-close" ref="closeEl" @click="closePanel()" aria-label="Fechar">✕</button>
+        <button class="btn btn-ghost panel-close" ref="closeEl" @click="closePanel()" aria-label="Fechar"><svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/></svg></button>
       </div>
 
       <div class="panel-body">
@@ -593,12 +594,11 @@
           <template v-else-if="panel.seats">
             <div class="big-occ">
               <span class="big-num" :class="bigClass">{{ panel.seats.availableSeats }}</span>
-              <span class="big-sub">livres de {{ panel.seats.totalSeats }} · {{ panel.seats.occupancyPct }}% ocupada</span>
+              <span class="big-sub"><span>livres de {{ panel.seats.totalSeats }}</span><span>{{ panel.seats.occupancyPct }}% ocupada</span></span>
             </div>
             <div class="big-bar" :class="bigClass"><i :style="{ width: (100 - panel.seats.occupancyPct) + '%' }"></i></div>
             <div class="type-counts" v-if="freeByType.length > 1">
-              Livres:
-              <span v-for="(t, i) in freeByType" :key="t.name">{{ i ? ' · ' : ' ' }}{{ t.n }} {{ t.name }}</span>
+              <span v-for="t in freeByType" :key="t.name">{{ t.n }} {{ t.name }}</span>
             </div>
 
             <div class="seatmap-wrap" style="margin-top:12px">
@@ -607,18 +607,18 @@
                 <g>
                   <rect v-for="c in map.seats" :key="c.k" :x="c.x" :y="c.y" width="16" height="16" rx="4"
                         :class="['seat-' + (c.free ? 'free' : 'taken'), c.special ? 'seat-special' : '']">
-                    <title>{{ c.label }} · {{ c.typeName }} · {{ c.statusName }}</title>
+                    <title>{{ c.label }}, {{ c.typeName }}, {{ c.statusName }}</title>
                   </rect>
                 </g>
                 <text v-for="(l, i) in map.labels" :key="i" class="seat-label" :x="l.x" :y="l.y">{{ l.label }}</text>
                 <rect v-if="map.screen" class="screen" :x="map.screen.x" :y="map.screen.y" :width="map.screen.w" height="10" rx="5" />
-                <text v-if="map.screen" class="screen-label" :x="map.screen.x + map.screen.w / 2" :y="map.screen.y + 22">TELA</text>
+                <text v-if="map.screen" class="screen-label" :x="map.screen.x + map.screen.w / 2" :y="map.screen.y + 22">Tela</text>
               </svg>
             </div>
             <div class="legend">
               <span style="--c: var(--green)">Livre</span>
-              <span style="--c: #2c2c44">Ocupado</span>
-              <span style="--c: var(--primary)" v-if="map.hasSpecial">Especial (PCD, casal, premium…)</span>
+              <span style="--c: var(--seat-taken)">Ocupado</span>
+              <span style="--c: var(--seat-special)" v-if="map.hasSpecial">Especial (PCD, casal, premium…)</span>
             </div>
           </template>
         </section>
@@ -638,15 +638,15 @@
             </table>
             <p class="filter-note" v-else>Preços indisponíveis para esta sessão.</p>
             <p class="fee-warn" v-if="panel.tickets.meia_fee_warning && panel.tickets.meia">
-              ⚠ A taxa de serviço é fixa ({{ fmtPrice(panel.tickets.meia.service) }}) e igual à da inteira, então na meia ela pesa
+              A taxa de serviço é fixa ({{ fmtPrice(panel.tickets.meia.service) }}) e igual à da inteira, então na meia ela pesa
               {{ Math.round(panel.tickets.meia.service / panel.tickets.meia.price * 100) }}% do valor.
             </p>
           </template>
         </section>
 
         <div class="panel-actions">
-          <a class="btn btn-primary" v-if="panel.session?.siteURL" :href="panel.session.siteURL" target="_blank" rel="noopener">Comprar no ingresso.com ↗</a>
-          <button class="btn btn-ghost" @click="loadPanel(true)" :disabled="panel.loading">↻ Atualizar assentos</button>
+          <a class="btn btn-primary" v-if="panel.session?.siteURL" :href="panel.session.siteURL" target="_blank" rel="noopener">Comprar no ingresso.com</a>
+          <button class="btn btn-ghost" @click="loadPanel(true)" :disabled="panel.loading">Atualizar assentos</button>
         </div>
       </div>
     </aside>
@@ -983,8 +983,8 @@ createApp({
       const h = '#' + p.toString()
       if (h !== location.hash) history[push ? 'pushState' : 'replaceState'](null, '', h)
       document.title = selectedMovie.value
-        ? `${selectedMovie.value.title} · cinema br`
-        : `Filmes em ${city.value} · cinema br`
+        ? `${selectedMovie.value.title} | Cinema BR`
+        : `Filmes em ${city.value} | Cinema BR`
     }
 
     function resetMovie() {
@@ -1092,7 +1092,7 @@ createApp({
         sid, sec,
         session: found?.s ?? null,
         theaterName: found?.t.name ?? null,
-        types: found?.st.type.join(' · ') ?? '',
+        types: found?.st.type.join(', ') ?? '',
         loading: true, error: null, seats: null, tickets: null,
       })
       document.body.classList.add('no-scroll')
