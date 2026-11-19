@@ -263,7 +263,8 @@
     .session-pill.past  { opacity: .45; }
     .session-pill.off   { opacity: .4; cursor: default; }
     .s-time  { font-size: 17px; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
-    .s-price { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .s-price { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .price-wait { width: 84px; height: 14px; border-radius: 3px; }
     .s-flag  { font-size: 12px; font-weight: 600; color: var(--red); }
     .s-flag.next-flag { color: var(--text); }
 
@@ -313,6 +314,7 @@
     .tickets { width: 100%; border-collapse: collapse; font-size: 14px; }
     .tickets td { padding: 7px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
     .tickets tr:last-child td { border-bottom: none; }
+    .tickets-sub { font-size: 13px; color: var(--muted); margin: 14px 0 2px; }
     .t-name  { padding-right: 10px; }
     .t-break { display: block; font-size: 13px; color: var(--muted); }
     .t-total { text-align: right; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -531,7 +533,8 @@
                 >
                   <span class="s-time">{{ s.time }}</span>
                   <span class="s-flag next-flag" v-if="s.id === t.nextId && !s._past">próxima</span>
-                  <span class="s-price" v-if="s.price">até {{ fmtPrice(s.price) }}</span>
+                  <span class="s-price" v-if="priceOf(s)">a partir de {{ fmtPrice(priceOf(s).a_partir_de) }}</span>
+                  <span class="s-price skeleton price-wait" v-else-if="priceEligible(s) && !priceFail[keyOf(s)]" aria-hidden="true"></span>
 
                   <span class="occ" :class="occClass(s)" v-if="showOcc && occOf(s)">
                     <template v-if="occOf(s).availableSeats === 0">
@@ -627,15 +630,29 @@
           <h3>Preços</h3>
           <div v-if="panel.loading && !panel.tickets"><div class="skeleton" style="height:90px"></div></div>
           <template v-else-if="panel.tickets">
-            <table class="tickets" v-if="panel.tickets.all.length">
-              <tr v-for="t in panel.tickets.all" :key="t.id">
-                <td class="t-name">
-                  {{ t.name }}
-                  <span class="t-break">{{ fmtPrice(t.price) }} + taxa {{ fmtPrice(t.service) }}</span>
-                </td>
-                <td class="t-total">{{ fmtPrice(t.total) }}</td>
-              </tr>
-            </table>
+            <template v-if="panel.tickets.all.length">
+              <table class="tickets" v-if="ticketGroups.general.length">
+                <tr v-for="t in ticketGroups.general" :key="t.id">
+                  <td class="t-name">
+                    {{ t.name }}
+                    <span class="t-break">{{ fmtPrice(t.price) }} + taxa {{ fmtPrice(t.service) }}</span>
+                  </td>
+                  <td class="t-total">{{ fmtPrice(t.total) }}</td>
+                </tr>
+              </table>
+              <template v-if="ticketGroups.programs.length">
+                <p class="tickets-sub">Convênios e assinaturas (exigem comprovação ou cadastro)</p>
+                <table class="tickets">
+                  <tr v-for="t in ticketGroups.programs" :key="t.id">
+                    <td class="t-name">
+                      {{ t.name }}
+                      <span class="t-break">{{ fmtPrice(t.price) }} + taxa {{ fmtPrice(t.service) }}</span>
+                    </td>
+                    <td class="t-total">{{ fmtPrice(t.total) }}</td>
+                  </tr>
+                </table>
+              </template>
+            </template>
             <p class="filter-note" v-else>Preços indisponíveis para esta sessão.</p>
             <p class="fee-warn" v-if="panel.tickets.meia_fee_warning && panel.tickets.meia">
               A taxa de serviço é fixa ({{ fmtPrice(panel.tickets.meia.service) }}) e igual à da inteira, então na meia ela pesa
@@ -849,9 +866,15 @@ createApp({
       const free = 100 - o.occupancyPct
       return free > 50 ? 'occ-ok' : free > 20 ? 'occ-mid' : 'occ-low'
     }
+    // "a partir de": cheapest of Inteira/Meia from the real ticket table. The price
+    // in the session listing is not used, it disagrees with the table at some theaters.
+    const prices = reactive({})       // "sid:sec" -> { a_partir_de, inteira, meia, t }
+    const priceFail = reactive({})
+    const priceOf = s => prices[keyOf(s)]
+    const priceEligible = s => s.enabled && !s._past && !!s.defaultSector
     const pillLabel = s => {
-      const o = occOf(s)
-      return `${s.time}${s.price ? ', até ' + fmtPrice(s.price) : ''}` +
+      const o = occOf(s), p = priceOf(s)
+      return `${s.time}${p ? ', a partir de ' + fmtPrice(p.a_partir_de) : ''}` +
         (o ? (o.availableSeats ? `, ${o.availableSeats} assentos livres` : ', esgotada') : '') +
         (s._past ? ', já iniciada' : '')
     }
@@ -887,10 +910,39 @@ createApp({
       }
       await Promise.all([worker(), worker(), worker()])
     }
+    async function loadPrices() {
+      const gen = occGen
+      const todo = []
+      for (const t of filteredTheaters.value)
+        for (const st of t.sessionTypes)
+          for (const s of st.sessions) {
+            const k = keyOf(s), p = prices[k]
+            const failed = priceFail[k] && Date.now() - priceFail[k] < 60000
+            if (priceEligible(s) && !failed && (!p || Date.now() - p.t > 300000)) todo.push(k)
+          }
+      const chunks = []
+      for (let i = 0; i < todo.length; i += 12) chunks.push(todo.slice(i, i + 12))
+      async function worker() {
+        while (chunks.length && gen === occGen) {
+          const keys = chunks.shift()
+          try {
+            const res = await apiGet('/precos?' + keys.map(k => 's=' + q(k)).join('&'), 0)
+            for (const k of keys) {
+              const v = res?.[k]
+              if (v) { prices[k] = { ...v, t: Date.now() }; delete priceFail[k] } else priceFail[k] = Date.now()
+            }
+          } catch {
+            for (const k of keys) priceFail[k] = Date.now()
+          }
+        }
+      }
+      await Promise.all([worker(), worker()])
+    }
+
     let occTimer = null
     watch([filteredTheaters, showOcc], () => {
       clearTimeout(occTimer)
-      occTimer = setTimeout(loadOccupancy, 120)
+      occTimer = setTimeout(() => { loadPrices(); loadOccupancy() }, 120)
     })
 
     // ── Fetchers ──────────────────────────────────────────────────
@@ -1076,7 +1128,11 @@ createApp({
         pn.theaterName ||= seats.value.theaterName
         occ[`${pn.sid}:${pn.sec}`] = slim(seats.value)   // keep the list in sync
       } else if (seats.status === 'rejected') pn.error = `Erro ao buscar assentos: ${seats.reason.message}`
-      if (tickets.status === 'fulfilled') pn.tickets = tickets.value
+      if (tickets.status === 'fulfilled') {
+        pn.tickets = tickets.value
+        const a = tickets.value?.a_partir_de          // keep the list in sync
+        if (a != null) prices[`${pn.sid}:${pn.sec}`] = { a_partir_de: a, t: Date.now() }
+      }
       else if (!pn.error) pn.error = `Erro ao buscar preços: ${tickets.reason.message}`
     }
 
@@ -1167,6 +1223,16 @@ createApp({
       }
     })
 
+    // Público geral (Inteira, Meia) first; convênios e assinaturas (UNIQUE etc.) apart.
+    const ticketGroups = computed(() => {
+      const tk = panel.value?.tickets; if (!tk) return null
+      const general = new Set([tk.inteira?.id, tk.meia?.id])
+      return {
+        general:  tk.all.filter(t => general.has(t.id)),
+        programs: tk.all.filter(t => !general.has(t.id)),
+      }
+    })
+
     const freeByType = computed(() => {
       const counts = {}
       for (const c of map.value.seats) if (c.free) counts[c.typeName] = (counts[c.typeName] ?? 0) + 1
@@ -1234,8 +1300,8 @@ createApp({
       selectedMovie, movieNotInCity,
       dates, selectedDate, sessions, theaterFilter, typeFilter, period, hidePast, showOcc,
       isToday, sessionTypes, hiddenPastCount, hasActiveFilters, filteredTheaters,
-      occOf, occFail, keyOf, occEligible, occClass, pillLabel,
-      panel, closeEl, roomName, map, freeByType, bigClass,
+      occOf, occFail, keyOf, occEligible, occClass, pillLabel, priceOf, priceFail, priceEligible,
+      panel, closeEl, roomName, map, freeByType, bigClass, ticketGroups,
       movieHref, goMovie, goBack, goHome, selectDate, toggleType, clearFilters,
       onStateChange, onCityChange, openFirstResult,
       openSession, closePanel, loadPanel,
