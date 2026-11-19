@@ -39,9 +39,11 @@ import core
 import events
 
 TZ = timezone(timedelta(hours=-3))
-DIGEST_WEEKDAY = int(os.environ.get("DIGEST_WEEKDAY", 3))   # Monday=0 → Thursday
-DIGEST_HOUR = int(os.environ.get("DIGEST_HOUR", 9))
+DIGEST_WEEKDAY = int(os.environ.get("DIGEST_WEEKDAY", 2))   # Monday=0 → Wednesday
+DIGEST_HOUR = int(os.environ.get("DIGEST_HOUR", 13))        # grid is complete by Wed ~13h
 CHECK_EVERY = 3600
+CHECK_EVERY_PUBLISH = 1200      # Mon 20h → Wed 13h, while the next week's grid is published
+WEEK_START_WEEKDAY = 3          # cinema week starts on Thursday
 GRID_DAYS = 7
 MAX_MSG = 3800
 
@@ -276,8 +278,17 @@ def week_report_blocks(start: date | None = None, days: int = 7) -> list[str]:
     return format_report(rep) or ["<i>Nada de especial mapeado para esta semana.</i>"]
 
 
+def week_start(today: date) -> date:
+    """First day of the cinema week the digest covers: today if Thursday, else the next one."""
+    return today + timedelta(days=(WEEK_START_WEEKDAY - today.weekday()) % 7)
+
+
+def check_interval(now: datetime | None = None) -> int:
+    return CHECK_EVERY_PUBLISH if core.in_publish_window(now or datetime.now(TZ)) else CHECK_EVERY
+
+
 def digest_key(today: date) -> str:
-    iso = today.isocalendar()
+    iso = week_start(today).isocalendar()
     return f"{iso[0]}-W{iso[1]:02d}"
 
 
@@ -563,11 +574,12 @@ def job_digest(tg, state, now=None):
         if not favs or not state.notify(chat_id) or not digest_due(now, state.digest_week(chat_id)):
             continue
         names = theater_names()
-        d = now.date().isoformat()
+        start = week_start(now.date())
+        d = start.isoformat()
         blocks = ["🗓 <b>Nova semana em cartaz</b>"] + [
             f"<b>{esc(names.get(f, f))}</b>\n{format_titles(core.api_sessions_by_theater(f, d))}"
             for f in favs]
-        blocks += ["📅 <b>Esta semana na cidade</b>"] + week_report_blocks(now.date())
+        blocks += ["📅 <b>Esta semana na cidade</b>"] + week_report_blocks(start)
         tg.send_all(chat_id, blocks)
         state.set_digest_week(chat_id, digest_key(now.date()))
 
@@ -579,7 +591,7 @@ def background(tg, state, stop: threading.Event):
                 job(tg, state)
             except Exception as e:                         # a failing job must not kill the loop
                 print(f"[job {job.__name__}] {e!r}", flush=True)
-        stop.wait(CHECK_EVERY)
+        stop.wait(check_interval())
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────

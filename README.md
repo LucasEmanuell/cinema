@@ -250,7 +250,7 @@ Duas camadas: memória do processo (sem disco/JSON em cache hit) e arquivos JSON
 | Lista de filmes (catálogo) | 1 hora | Muda quando estreia filme novo (servido vencido por até 24 h) |
 | Filmes na cidade (scan de cinemas) | 15 min | Derivado das sessões de hoje e amanhã; vencido, ainda é servido por até 6 h enquanto atualiza |
 | Lista de cinemas | 1 hora | Estável |
-| Sessões / programação | 15 min | Estável após ser publicada |
+| Sessões / programação | 15 min (5 min de seg 20h a qua 13h) | Estável após ser publicada; na janela em que a grade da semana é publicada o TTL cai para 5 min |
 | Preços (tickets) | 1 hora | Raramente muda durante o dia |
 | Mapa de assentos | 45 s | Muda conforme ingressos são vendidos (o painel tem "Atualizar") |
 
@@ -334,7 +334,7 @@ python bot.py
 | `/seguir`, `/seguindo`, `/parar` | filmes que você espera |
 | `/avisos` | liga/desliga notificações |
 
-Notificações (checagem de hora em hora): filme novo na grade de um favorito (⭐ se você segue), título novo em "em breve", mudança de data/pré-venda/estreia de um filme seguido e resumo semanal na quinta (`DIGEST_WEEKDAY`, `DIGEST_HOUR`).
+Notificações (checagem de hora em hora; a cada 20 min de seg 20h a qua 13h, quando o ingresso.com publica a grade da semana): filme novo na grade de um favorito (⭐ se você segue), título novo em "em breve", mudança de data/pré-venda/estreia de um filme seguido e resumo semanal na quarta às 13h, já com a grade da semana seguinte (quinta a quarta) (`DIGEST_WEEKDAY`, `DIGEST_HOUR`).
 Estado em SQLite (`bot_state.db`, ou `BOT_DB`), por `chat_id`: favoritos, lista de filmes seguidos e o que já foi avisado. Na primeira execução o bot só registra o que existe, sem notificar.
 
 ## Testes
