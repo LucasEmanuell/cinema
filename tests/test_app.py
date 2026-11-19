@@ -88,6 +88,15 @@ class TestGetFilmes:
             r = client.get("/filmes?cidade=recife")
         assert r.status_code == 200
 
+    def test_exposes_original_title_and_year_for_letterboxd_link(self):
+        raw = [{"id": "1", "title": "Duna (Relançamento)", "originalTitle": "Dune", "releaseYear": 2021},
+               {"id": "2", "title": "Sem Dados", "originalTitle": "", "releaseYear": 0}]
+        with patch("app.resolve_city", return_value=(36, "Fortaleza")), \
+             patch("app.api_movies_in_city", return_value=raw):
+            items = client.get("/filmes").json()
+        assert (items[0]["originalTitle"], items[0]["releaseYear"]) == ("Dune", 2021)
+        assert (items[1]["originalTitle"], items[1]["releaseYear"]) == (None, None)
+
     def test_unknown_city_returns_404(self):
         with patch("app.resolve_city", return_value=(None, None)):
             r = client.get("/filmes?cidade=xyznotacity")

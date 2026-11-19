@@ -216,6 +216,9 @@
     /* ── Sessions view ───────────────────────────────────────────── */
     .sessions-top { display: flex; align-items: flex-start; gap: 14px; margin-bottom: 18px; flex-wrap: wrap; }
     .sessions-title { font-size: 20px; font-weight: 700; line-height: 1.2; }
+    .title-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; }
+    .ext-link { font-size: 13px; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; }
+    .ext-link:hover { color: var(--text); }
     .sessions-meta  { font-size: 13px; color: var(--muted); margin-top: 3px; display: flex; flex-wrap: wrap; gap: 2px 12px; }
 
     .date-tabs { display: flex; gap: 6px; margin-bottom: 14px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
@@ -352,6 +355,7 @@
     }
     @media (pointer: coarse) {
       .btn, .seg button, .date-tab, .type-chip, .check, select, input[type="search"] { min-height: 44px; }
+      .ext-link { padding: 10px 0; }
       .check input { width: 20px; height: 20px; }
     }
     @media (prefers-reduced-motion: reduce) {
@@ -450,7 +454,11 @@
       <div class="sessions-top">
         <button class="btn btn-ghost" @click="goBack">← Voltar</button>
         <div>
-          <h1 class="sessions-title">{{ selectedMovie.title }}</h1>
+          <div class="title-row">
+            <h1 class="sessions-title">{{ selectedMovie.title }}</h1>
+            <a class="ext-link" :href="letterboxdUrl(selectedMovie)" target="_blank" rel="noopener"
+               :aria-label="'Buscar ' + selectedMovie.title + ' no Letterboxd (abre em nova aba)'">Letterboxd</a>
+          </div>
           <div class="sessions-meta">
             <span v-if="selectedMovie.contentRating">{{ selectedMovie.contentRating }}</span>
             <span v-if="selectedMovie.duration">{{ selectedMovie.duration }}min</span>
@@ -971,6 +979,12 @@ createApp({
 
     // ── Navigation (state <-> URL hash) ───────────────────────────
     const movieKey  = m => m.urlKey ?? String(m.id)
+    // Letterboxd has no public API, so link to its search. The original title plus the
+    // year (the original one on re-releases) finds the right film, e.g. "Dune 2021".
+    const letterboxdUrl = m =>
+      'https://letterboxd.com/search/films/' +
+      encodeURIComponent([m.originalTitle || m.title, m.releaseYear].filter(Boolean).join(' ')) + '/'
+    
     const movieHref = m => '#' + new URLSearchParams({ c: city.value, f: movieKey(m) })
 
     function syncHash(push = false) {
@@ -1240,7 +1254,7 @@ createApp({
       onStateChange, onCityChange, openFirstResult,
       openSession, closePanel, loadPanel,
       prefetchMovie, prefetchSession, cancelPrefetch,
-      fmtPrice,
+      fmtPrice, letterboxdUrl,
     }
   }
 }).mount('#app')
