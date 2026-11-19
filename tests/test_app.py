@@ -241,6 +241,29 @@ class TestGetSessoes:
 
 # ── /tickets/{session_id}/{section_id} ───────────────────────────────────────
 
+class TestGetPrecos:
+    def test_returns_cheapest_general_price(self):
+        raw = {"default": [
+            {"name": "Inteira", "price": 25.0, "service": 3.5, "total": 28.5},
+            {"name": "UNIQUE MEIA ENTRADA", "price": 12.5, "service": 1.75, "total": 14.25},
+            {"name": "Meia", "price": 12.5, "service": 3.5, "total": 16.0},
+        ]}
+        with patch("app.api_tickets", return_value=raw):
+            r = client.get("/precos?s=1:2&s=3:4")
+        assert r.status_code == 200
+        assert r.json()["1:2"] == {"a_partir_de": 16.0, "inteira": 28.5, "meia": 16.0}
+        assert set(r.json()) == {"1:2", "3:4"}
+
+    def test_failed_session_is_null(self):
+        from core import APIError
+        with patch("app.api_tickets", side_effect=APIError("timeout")):
+            r = client.get("/precos?s=1:2")
+        assert r.status_code == 200 and r.json() == {"1:2": None}
+
+    def test_bad_format_is_422(self):
+        assert client.get("/precos?s=abc").status_code == 422
+
+
 class TestGetTickets:
     def test_returns_parsed_tickets(self, tickets):
         with patch("app.api_tickets", return_value=tickets):

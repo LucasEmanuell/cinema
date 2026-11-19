@@ -615,3 +615,12 @@ def parse_tickets(data: dict) -> dict:
         "meia":    find(["meia"], exclude=["unique"]),
         "all":     real,
     }
+
+
+def general_price(parsed: dict) -> float | None:
+    """Cheapest total (price + fee) anyone can pay: the lower of Inteira and Meia.
+
+    Ignores programme tickets (UNIQUE, Cinematicket…), which need a membership.
+    """
+    totals = [t["total"] for t in (parsed["inteira"], parsed["meia"]) if t]
+    return min(totals) if totals else None

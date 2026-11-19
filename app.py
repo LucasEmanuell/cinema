@@ -11,6 +11,7 @@ Endpoints:
   GET /tickets/{session_id}/{section_id}
   GET /assentos/{session_id}/{section_id}?atualizar=1
   GET /ocupacao?s={session_id}:{section_id}&s=…
+  GET /precos?s={session_id}:{section_id}&s=…
 """
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -29,7 +30,7 @@ from core import (
     APIError, CITY_ID,
     api_movies, api_movies_in_city, api_session_dates, api_sessions,
     api_tickets, api_seats, api_states, find_movie, normalize,
-    resolve_date, resolve_city, parse_tickets,
+    resolve_date, resolve_city, parse_tickets, general_price,
 )
 
 
@@ -63,6 +64,7 @@ _CACHE_CONTROL = {
     "/filmes":   "public, max-age=60, stale-while-revalidate=300",
     "/sessoes":  "public, max-age=60, stale-while-revalidate=300",
     "/tickets":  "public, max-age=300",
+    "/precos":   "public, max-age=300",
     "/assentos": "public, max-age=20",
     "/ocupacao": "public, max-age=20",
     "/static":   "public, max-age=31536000, immutable",
@@ -262,6 +264,7 @@ def get_tickets(session_id: str, section_id: str):
         "inteira":           parsed["inteira"],
         "meia":              meia,
         "all":               parsed["all"],
+        "a_partir_de":       general_price(parsed),
         "meia_fee_warning":  warning,
     }
 
@@ -314,18 +317,49 @@ def get_assentos(
     return JSONResponse(response, headers={"Cache-Control": "no-cache"} if atualizar else None)
 
 
+def _session_pairs(items: list[str]) -> list[tuple[str, str]]:
+    pairs = []
+    for item in items[:80]:
+        sid, _, sec = item.partition(":")
+        if not sid or not sec:
+            raise HTTPException(status_code=422, detail=f"Formato inválido: {item!r} (use session:section)")
+        pairs.append((sid, sec))
+    return pairs
+
+
+@app.get("/precos", summary="Preço 'a partir de' de várias sessões de uma vez")
+def get_precos(s: list[str] = Query(..., description="session_id:section_id (repetível, máx. 80)")):
+    """
+    Para listas: o menor valor entre Inteira e Meia (taxa incluída) de cada sessão,
+    sem convênios como UNIQUE. Vem da tabela real de ingressos, não do preço da
+    listagem de sessões, que em alguns cinemas diverge. Falhas voltam como `null`.
+    """
+    pairs = _session_pairs(s)
+
+    def one(pair):
+        try:
+            parsed = parse_tickets(api_tickets(*pair))
+        except APIError:
+            return None
+        price = general_price(parsed)
+        return None if price is None else {
+            "a_partir_de": price,
+            "inteira": parsed["inteira"]["total"] if parsed["inteira"] else None,
+            "meia":    parsed["meia"]["total"] if parsed["meia"] else None,
+        }
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(one, pairs))
+    return {f"{sid}:{sec}": r for (sid, sec), r in zip(pairs, results)}
+
+
 @app.get("/ocupacao", summary="Ocupação de várias sessões de uma vez")
 def get_ocupacao(s: list[str] = Query(..., description="session_id:section_id (repetível, máx. 80)")):
     """
     Versão leve de /assentos para listas: só os totais, sem o mapa, e buscando
     as sessões em paralelo. Sessões que falharem voltam como `null`.
     """
-    pairs = []
-    for item in s[:80]:
-        sid, _, sec = item.partition(":")
-        if not sid or not sec:
-            raise HTTPException(status_code=422, detail=f"Formato inválido: {item!r} (use session:section)")
-        pairs.append((sid, sec))
+    pairs = _session_pairs(s)
 
     def one(pair):
         try:

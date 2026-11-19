@@ -37,6 +37,7 @@ from core import (
     resolve_city,
     resolve_date,
     parse_tickets,
+    general_price,
     cache_get,
     cache_set,
     check_schema,
@@ -262,6 +263,34 @@ class TestResolveCity:
             city_id, city_name = resolve_city("xyznotacity999")
         assert city_id is None
         assert city_name is None
+
+
+# ── general_price ─────────────────────────────────────────────────────────────
+
+class TestGeneralPrice:
+    @staticmethod
+    def _t(name, total):
+        return {"name": name, "price": total, "service": 0, "total": total}
+
+    def test_cheapest_of_inteira_and_meia(self):
+        data = {"default": [self._t("Inteira", 28.5), self._t("Meia", 16.0)]}
+        assert general_price(parse_tickets(data)) == 16.0
+
+    def test_ignores_unique_and_promo_tickets(self):
+        data = {"default": [
+            self._t("Inteira", 28.5),
+            self._t("UNIQUE DESC R$1 -necessária comprovação", 13.11),
+            self._t("UNIQUE MEIA ENTRADA", 14.25),
+            self._t("Meia", 16.0),
+        ]}
+        assert general_price(parse_tickets(data)) == 16.0
+
+    def test_only_inteira(self):
+        assert general_price(parse_tickets({"default": [self._t("Inteira", 18.0)]})) == 18.0
+
+    def test_none_without_inteira_or_meia(self):
+        assert general_price(parse_tickets({"default": [self._t("Cinematicket", 9.0)]})) is None
+        assert general_price(parse_tickets(None)) is None
 
 
 # ── parse_tickets ─────────────────────────────────────────────────────────────

@@ -205,6 +205,7 @@ A API compartilha o mesmo cache do CLI (`~/.cache/cinema-fortaleza/`), então re
 | `GET` | `/tickets/{session_id}/{section_id}` | Preços com taxa de serviço separada |
 | `GET` | `/assentos/{session_id}/{section_id}` | Mapa de assentos completo (`?atualizar=1` ignora o cache) |
 | `GET` | `/ocupacao?s=sessão:seção&s=…` | Só os totais de ocupação de várias sessões, em paralelo (máx. 80) |
+| `GET` | `/precos?s=sessão:seção&s=…` | Preço "a partir de" (menor entre Inteira e Meia, taxa incluída, sem convênios) de várias sessões, em paralelo (máx. 80). Vem da tabela real de ingressos: o preço da listagem de sessões diverge dela em alguns cinemas (ex.: UCI Iguatemi, +R$ 4,56) |
 
 
 Os parâmetros `filme` e `cidade` aceitam texto parcial sem acento, igual ao CLI (`filme` também aceita o ID numérico, que o frontend usa por ser mais rápido). Cidade padrão: Fortaleza.
